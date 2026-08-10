@@ -21,6 +21,7 @@ export default function ChatWindow({ username, onLogout }) {
   const [imageDraft, setImageDraft] = useState('');
   const [imageName, setImageName] = useState('');
   const [imageSize, setImageSize] = useState(0);
+  const [lightboxImage, setLightboxImage] = useState(null);
 
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -198,6 +199,15 @@ export default function ChatWindow({ username, onLogout }) {
       {sidebarOpen && (
         <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
       )}
+
+      {lightboxImage && (
+        <div className="lightbox-overlay" onClick={() => setLightboxImage(null)}>
+          <button type="button" className="btn-close-lightbox" onClick={() => setLightboxImage(null)}>
+            <i className="bi bi-x-lg"></i>
+          </button>
+          <img src={lightboxImage} alt="Fullscreen Preview" className="lightbox-image" />
+        </div>
+      )}
       
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
@@ -233,7 +243,12 @@ export default function ChatWindow({ username, onLogout }) {
 
         <div className="messages-list">
           {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} isOwn={m.username === username} />
+            <MessageBubble
+              key={m.id}
+              message={m}
+              isOwn={m.username === username}
+              onImageClick={setLightboxImage}
+            />
           ))}
           <TypingIndicator typingUsers={typingUsers} />
           <div ref={messagesEndRef} />
