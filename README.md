@@ -8,15 +8,20 @@ A real-time chat application built with **React (Vite)** on the frontend and **N
 
 ## Features
 
-- Send and receive messages instantly via Socket.io (no polling, no page refresh)
-- Chat history persisted in SQLite and reloaded on refresh
-- Message timestamps
-- Username-based (dummy) login — no password, just picks a display name
-- Typing indicator ("X is typing...")
-- Online / offline user presence list
-- Sent vs. delivered message status ticks
-- Graceful handling of disconnects/reconnects — falls back to REST `POST /api/messages` if the socket is temporarily down, and shows a "Reconnecting..." banner
-- Clean, mobile-friendly UI built with Bootstrap 5
+- **Realtime Messaging**: Send and receive messages instantly via Socket.io (no polling, no page refresh)
+- **Persistent Chat History**: Saved in SQLite database on the backend and fetched via REST API on page reload
+- **Timestamps**: Displayed on all messages
+- **Dummy Authentication**: Username-based login (no password required)
+- **Presence List**: Active online/offline user list shown in a sliding responsive drawer on mobile
+- **Typing Indicator**: Real-time broadcast when other users are typing
+- **Message Status Ticks**: Double-ticks to show when a message has been delivered/saved to the database
+- **Image Sharing & Camera Capture**:
+  - Image Upload button (select from gallery)
+  - Dedicated Mobile Camera trigger button (takes a photo directly on mobile device)
+  - Client-side Canvas Compression (automatically resizes and optimizes large camera files down to ~150KB to prevent layout lag)
+  - Interactive full-screen glassmorphic Lightbox overlay to view photos in-app
+- **Resilience**: Falls back to REST `POST /api/messages` if the websocket drops, with a visual "Reconnecting" connection status banner
+- **Premium Glassmorphic Design**: Clean mobile-first responsive layout with dynamic drawer sidebars and animations
 
 ---
 
@@ -156,10 +161,15 @@ npm run preview   # serve the production build locally
 - "Message read status" is simplified to sent vs. delivered (double-tick once the server has persisted and broadcast the message) rather than full per-recipient read receipts, since this is a single shared room rather than 1:1 conversations where "read by whom" would be well-defined.
 - Built and verified as a React web app rather than a React Native app — see the note at the top of this file.
 
-## Submission notes
+## Submission & Deployment Details
 
-This deliverable is the source code only. Producing a GitHub repository link, an APK, a screen recording, and a live-hosted backend URL all require accounts/services (GitHub, an Android build toolchain or Expo, a screen-recording pipeline, Render/Railway) that aren't available in the environment this was built in. To complete the submission checklist:
+This project is fully deployed and active.
 
-1. `git init`, commit this folder, and push to a new GitHub repo.
-2. Run backend + frontend locally (steps above) and record a short screen capture of two browser tabs chatting in real time, or port the React components into an Expo/React Native project to produce an APK.
-3. Optionally deploy `backend/` to Render/Railway (set the env vars above) and point `VITE_SERVER_URL` in the deployed frontend at that URL.
+### Live Links
+*   **GitHub Repository**: [https://github.com/ficusreligiosa/realtime-chat-app](https://github.com/ficusreligiosa/realtime-chat-app)
+*   **Live Web Client (Vercel)**: [https://realtime-chat-app-eight-steel.vercel.app](https://realtime-chat-app-eight-steel.vercel.app)
+*   **Live Backend REST/Socket API (Render)**: [https://realtime-chat-app-backend-n2j7.onrender.com](https://realtime-chat-app-backend-n2j7.onrender.com)
+
+### Verification & Testing
+1. **Desktop / Mobile Browsing**: You can open the live link on two different devices (e.g. your computer and your phone) or open it in a private browser window. Log in with different usernames to test real-time chat, typing indicators, image attachments, camera triggers, and online status lists syncing instantly.
+2. **Auto-Deployment**: Any pushes to the GitHub repository's `main` branch automatically trigger Vercel to rebuild and publish the latest frontend client, and Render to rebuild and restart the live Node.js chat server.
