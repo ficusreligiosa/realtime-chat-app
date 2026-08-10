@@ -46,8 +46,22 @@ function getHistory(limit = 100) {
   return rows.reverse();
 }
 
+const uniqueUsersStmt = db.prepare(
+  `SELECT DISTINCT username FROM messages`
+);
+
+function getAllUsernames() {
+  try {
+    return uniqueUsersStmt.all().map(row => row.username);
+  } catch (err) {
+    console.error('Failed to get unique usernames:', err);
+    return [];
+  }
+}
+
 module.exports = {
   createMessage,
   getHistory,
   getMessageById,
+  getAllUsernames,
 };

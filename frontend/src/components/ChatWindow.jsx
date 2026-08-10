@@ -92,12 +92,16 @@ export default function ChatWindow({ username, onLogout }) {
     }
     function handleNewMessage(message) {
       setMessages((prev) => {
+        // If we find an optimistic message with the matching tempId, replace it and set status to delivered
+        if (message.tempId && prev.some((m) => m.id === message.tempId)) {
+          return prev.map((m) => (m.id === message.tempId ? { ...message, status: 'delivered' } : m));
+        }
         if (prev.some((m) => m.id === message.id)) return prev; // avoid dupes from REST fallback
-        return [...prev, message];
+        return [...prev, { ...message, status: 'delivered' }];
       });
     }
-    function handleOnlineUsers(users) {
-      setOnlineUsers(users);
+    function handleUsersPresence(presenceList) {
+      setOnlineUsers(presenceList);
     }
     function handleTypingUpdate({ username: who, isTyping }) {
       if (who === username) return;
@@ -113,7 +117,7 @@ export default function ChatWindow({ username, onLogout }) {
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('message:new', handleNewMessage);
-    socket.on('users:online', handleOnlineUsers);
+    socket.on('users:presence', handleUsersPresence);
     socket.on('typing:update', handleTypingUpdate);
     socket.on('error:message', handleSocketError);
 
@@ -122,7 +126,7 @@ export default function ChatWindow({ username, onLogout }) {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('message:new', handleNewMessage);
-      socket.off('users:online', handleOnlineUsers);
+      socket.off('users:presence', handleUsersPresence);
       socket.off('typing:update', handleTypingUpdate);
       socket.off('error:message', handleSocketError);
       socket.disconnect();
@@ -220,19 +224,38 @@ export default function ChatWindow({ username, onLogout }) {
     }
 
     for (const payload of payloads) {
+      const tempId = 'optimistic-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+      
+      // Optimistically append the message as 'sending' (single checkmark)
+      const optimisticMsg = {
+        id: tempId,
+        username,
+        text: payload.text,
+        createdAt: new Date().toISOString(),
+        status: 'sending'
+      };
+      setMessages((prev) => [...prev, optimisticMsg]);
+
       if (connected) {
-        socket.emit('message:send', payload, (ack) => {
+        socket.emit('message:send', { ...payload, tempId }, (ack) => {
           if (!ack?.success) {
             setSendError(ack?.error || 'Failed to send message.');
+            // Remove optimistic message if send failed
+            setMessages((prev) => prev.filter((m) => m.id !== tempId));
           }
         });
       } else {
         try {
           const message = await sendMessageRest(payload);
-          setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
+          // Replace the optimistic message with the resolved server message (double checkmark)
+          setMessages((prev) =>
+            prev.map((m) => (m.id === tempId ? { ...message, status: 'delivered' } : m))
+          );
         } catch (err) {
           console.error(err);
           setSendError('Failed to send message. Please check your connection.');
+          // Remove optimistic message if send failed
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
         }
       }
     }

@@ -1,4 +1,4 @@
-const { createMessage } = require('../db/messageStore');
+const { createMessage, getAllUsernames } = require('../db/messageStore');
 
 /**
  * Tracks which usernames are currently online.
@@ -23,6 +23,17 @@ function getOnlineUsernames() {
   return Array.from(onlineUsers.keys());
 }
 
+function getUsersPresenceList() {
+  const dbUsers = getAllUsernames();
+  const activeUsers = getOnlineUsernames();
+  const allUsers = new Set([...dbUsers, ...activeUsers]);
+  
+  return Array.from(allUsers).map(username => ({
+    username,
+    isOnline: activeUsers.includes(username)
+  }));
+}
+
 module.exports = function registerChatSocket(io) {
   io.on('connection', (socket) => {
     console.log(`[socket] connected: ${socket.id}`);
@@ -34,8 +45,8 @@ module.exports = function registerChatSocket(io) {
         socket.data.username = username.trim();
         addOnlineUser(socket.data.username, socket.id);
 
-        // Let everyone know the updated online list
-        io.emit('users:online', getOnlineUsernames());
+        // Let everyone know the updated presence list (online + offline users)
+        io.emit('users:presence', getUsersPresenceList());
         console.log(`[socket] ${socket.data.username} joined (${socket.id})`);
       } catch (err) {
         console.error('[socket] user:join error:', err);
@@ -48,6 +59,7 @@ module.exports = function registerChatSocket(io) {
       try {
         const username = (payload && payload.username) || socket.data.username;
         const text = payload && payload.text;
+        const tempId = payload && payload.tempId;
 
         if (!username || !text || !text.trim()) {
           const errMsg = 'username and text are required';
@@ -58,8 +70,11 @@ module.exports = function registerChatSocket(io) {
 
         const message = createMessage({ username: username.trim(), text: text.trim() });
 
-        // Broadcast to everyone, including sender, so all clients render from one source of truth
-        io.emit('message:new', message);
+        // Broadcast to everyone, including sender, appending tempId so sender can link optimistic tick
+        io.emit('message:new', { ...message, tempId });
+
+        // If this is a new username sending a message, update the presence lists
+        io.emit('users:presence', getUsersPresenceList());
 
         if (typeof ack === 'function') ack({ success: true, message });
       } catch (err) {
@@ -83,7 +98,7 @@ module.exports = function registerChatSocket(io) {
         const username = socket.data.username;
         if (username) {
           removeOnlineUser(username, socket.id);
-          io.emit('users:online', getOnlineUsernames());
+          io.emit('users:presence', getUsersPresenceList());
           console.log(`[socket] ${username} disconnected (${reason})`);
         }
       } catch (err) {
