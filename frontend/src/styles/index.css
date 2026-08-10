@@ -136,6 +136,7 @@ html, body, #root {
 .chat-layout {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   background: var(--bg-gradient);
   overflow: hidden;
 }
@@ -187,6 +188,7 @@ html, body, #root {
   flex-direction: column;
   height: 100%;
   background: var(--chat-bg);
+  overflow: hidden; /* Lock header and input bar in place on mobile */
 }
 
 .messages-list {
