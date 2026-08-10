@@ -9,12 +9,28 @@ function formatTime(isoLike) {
   }
 }
 
+function isDataURL(str) {
+  return typeof str === 'string' && str.startsWith('data:image/');
+}
+
 export default function MessageBubble({ message, isOwn }) {
   return (
     <div className={`message-row mb-2 ${isOwn ? 'own' : ''}`}>
       <div className={`message-bubble ${isOwn ? 'own' : 'other'}`}>
         {!isOwn && <div className="message-author">{message.username}</div>}
-        <div className="message-text">{message.text}</div>
+        {isDataURL(message.text) ? (
+          <img
+            src={message.text}
+            alt="Shared content"
+            className="bubble-image"
+            onClick={() => {
+              const w = window.open();
+              w.document.write(`<iframe src="${message.text}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+            }}
+          />
+        ) : (
+          <div className="message-text">{message.text}</div>
+        )}
         <div className="message-meta">
           <span>{formatTime(message.createdAt)}</span>
           {isOwn && (

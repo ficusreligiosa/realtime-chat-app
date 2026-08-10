@@ -18,9 +18,14 @@ export default function ChatWindow({ username, onLogout }) {
   const [sendError, setSendError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const [imageDraft, setImageDraft] = useState('');
+  const [imageName, setImageName] = useState('');
+  const [imageSize, setImageSize] = useState(0);
+
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const isTypingRef = useRef(false);
+  const fileInputRef = useRef(null);
 
   // Load history + connect socket on mount
   useEffect(() => {
@@ -108,32 +113,82 @@ export default function ChatWindow({ username, onLogout }) {
     typingTimeoutRef.current = setTimeout(stopTyping, TYPING_STOP_DELAY);
   }
 
+  function handleFileClick() {
+    fileInputRef.current?.click();
+  }
+
+  function handleFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setSendError('Please select a valid image file.');
+      return;
+    }
+
+    const MAX_SIZE = 1024 * 1024; // 1MB
+    if (file.size > MAX_SIZE) {
+      setSendError('Image is too large. Please select an image under 1MB.');
+      return;
+    }
+
+    setSendError('');
+    setImageName(file.name);
+    setImageSize(file.size);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setImageDraft(event.target.result);
+    };
+    reader.readAsDataURL(file);
+
+    e.target.value = '';
+  }
+
+  function handleRemoveImage() {
+    setImageDraft('');
+    setImageName('');
+    setImageSize(0);
+  }
+
   async function handleSend(e) {
     e.preventDefault();
     const text = draft.trim();
-    if (!text) return;
+    const image = imageDraft;
+
+    if (!text && !image) return;
 
     setDraft('');
+    setImageDraft('');
+    setImageName('');
+    setImageSize(0);
     setSendError('');
     clearTimeout(typingTimeoutRef.current);
     stopTyping();
 
-    const payload = { username, text };
+    const payloads = [];
+    if (image) {
+      payloads.push({ username, text: image });
+    }
+    if (text) {
+      payloads.push({ username, text });
+    }
 
-    if (connected) {
-      socket.emit('message:send', payload, (ack) => {
-        if (!ack?.success) {
-          setSendError(ack?.error || 'Failed to send message.');
+    for (const payload of payloads) {
+      if (connected) {
+        socket.emit('message:send', payload, (ack) => {
+          if (!ack?.success) {
+            setSendError(ack?.error || 'Failed to send message.');
+          }
+        });
+      } else {
+        try {
+          const message = await sendMessageRest(payload);
+          setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
+        } catch (err) {
+          console.error(err);
+          setSendError('Failed to send message. Please check your connection.');
         }
-      });
-    } else {
-      // Fallback to REST if the socket is temporarily disconnected
-      try {
-        const message = await sendMessageRest(payload);
-        setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
-      } catch (err) {
-        console.error(err);
-        setSendError('Failed to send message. Please check your connection.');
       }
     }
   }
@@ -189,7 +244,33 @@ export default function ChatWindow({ username, onLogout }) {
         )}
 
         <form className="input-area" onSubmit={handleSend}>
+          {imageDraft && (
+            <div className="image-preview-bar">
+              <div className="image-preview-wrapper">
+                <img src={imageDraft} alt="Preview" />
+              </div>
+              <div className="image-preview-info">
+                <div className="image-preview-name text-truncate">{imageName}</div>
+                <div className="image-preview-size">{(imageSize / 1024).toFixed(1)} KB</div>
+              </div>
+              <button type="button" className="btn btn-remove-preview" onClick={handleRemoveImage}>
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+          )}
+
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+
           <div className="input-container">
+            <button type="button" className="btn btn-attach" onClick={handleFileClick}>
+              <i className="bi bi-image" />
+            </button>
             <input
               type="text"
               className="form-control custom-input"
@@ -199,7 +280,7 @@ export default function ChatWindow({ username, onLogout }) {
               onBlur={stopTyping}
               maxLength={2000}
             />
-            <button type="submit" className="btn btn-send" disabled={!draft.trim()}>
+            <button type="submit" className="btn btn-send" disabled={!draft.trim() && !imageDraft}>
               <i className="bi bi-send-fill" />
             </button>
           </div>
