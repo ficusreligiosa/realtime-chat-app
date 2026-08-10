@@ -522,16 +522,26 @@ html, body, #root {
   }
 
   .btn-attach {
-    font-size: 1.35rem !important;
+    font-size: 1.2rem !important;
+    width: 40px !important;
+    height: 40px !important;
   }
 
   .btn-send {
-    font-size: 1.25rem !important;
+    font-size: 1.1rem !important;
+    width: 40px !important;
+    height: 40px !important;
   }
 
   .image-preview-name {
     font-size: 0.95rem !important;
     max-width: 140px;
+  }
+
+  .input-container {
+    gap: 8px !important;
+    padding: 4px 8px !important;
+    border-radius: 12px !important;
   }
 }
 
