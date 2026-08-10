@@ -260,7 +260,7 @@ export default function ChatWindow({ username, onLogout }) {
             {username}
           </span>
           <div className="d-flex align-items-center gap-2">
-            <button type="button" className="btn btn-close-sidebar d-md-none" onClick={() => setSidebarOpen(false)}>
+            <button type="button" className="btn btn-close-sidebar d-lg-none" onClick={() => setSidebarOpen(false)}>
               <i className="bi bi-x-lg"></i>
             </button>
             <button className="btn btn-leave" onClick={onLogout}>
@@ -277,7 +277,7 @@ export default function ChatWindow({ username, onLogout }) {
             <i className="bi bi-people-fill"></i>
           </button>
           <h2 className="chat-title">Global Room</h2>
-          <div className="d-md-none" style={{ width: 32 }} />
+          <div className="d-lg-none" style={{ width: 32 }} />
         </header>
 
         <ConnectionBanner connected={connected} />
