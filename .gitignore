@@ -6,3 +6,4 @@ dist/
 *.sqlite3-wal
 npm-debug.log*
 .DS_Store
+vite.config.js.timestamp-*
