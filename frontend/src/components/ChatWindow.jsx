@@ -55,6 +55,7 @@ export default function ChatWindow({ username, onLogout }) {
   const [historyError, setHistoryError] = useState('');
   const [sendError, setSendError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
   const [imageDraft, setImageDraft] = useState('');
   const [imageName, setImageName] = useState('');
@@ -73,22 +74,40 @@ export default function ChatWindow({ username, onLogout }) {
 
     fetchHistory(100)
       .then((history) => {
-        if (!cancelled) setMessages(history);
+        if (!cancelled) {
+          setMessages(history);
+          // Pre-populate presence list from message history authors as offline fallback
+          const uniqueUsernames = Array.from(new Set(history.map((m) => m.username)))
+            .filter((u) => u && u.trim());
+          
+          // Make sure current user is in the list
+          if (!uniqueUsernames.includes(username)) {
+            uniqueUsernames.push(username);
+          }
+
+          const fallbackPresence = uniqueUsernames.map((u) => ({
+            username: u,
+            isOnline: u === username ? connected : false // current user status reflects connection state
+          }));
+          setOnlineUsers(fallbackPresence);
+        }
       })
       .catch((err) => {
         console.error(err);
         if (!cancelled) setHistoryError('Could not load previous messages.');
       });
-
-    socket.connect();
-    socket.emit('user:join', username);
-
     function handleConnect() {
       setConnected(true);
       socket.emit('user:join', username);
+      setOnlineUsers((prev) =>
+        prev.map((u) => (u.username === username ? { ...u, isOnline: true } : u))
+      );
     }
     function handleDisconnect() {
       setConnected(false);
+      setOnlineUsers((prev) =>
+        prev.map((u) => (u.username === username ? { ...u, isOnline: false } : u))
+      );
     }
     function handleNewMessage(message) {
       setMessages((prev) => {
@@ -120,6 +139,8 @@ export default function ChatWindow({ username, onLogout }) {
     socket.on('users:presence', handleUsersPresence);
     socket.on('typing:update', handleTypingUpdate);
     socket.on('error:message', handleSocketError);
+
+    socket.connect();
 
     return () => {
       cancelled = true;
@@ -202,11 +223,14 @@ export default function ChatWindow({ username, onLogout }) {
 
   async function handleSend(e) {
     e.preventDefault();
+    if (isSending) return;
+
     const text = draft.trim();
     const image = imageDraft;
 
     if (!text && !image) return;
 
+    setIsSending(true);
     setDraft('');
     setImageDraft('');
     setImageName('');
@@ -215,49 +239,53 @@ export default function ChatWindow({ username, onLogout }) {
     clearTimeout(typingTimeoutRef.current);
     stopTyping();
 
-    const payloads = [];
-    if (image) {
-      payloads.push({ username, text: image });
-    }
-    if (text) {
-      payloads.push({ username, text });
-    }
+    try {
+      const payloads = [];
+      if (image) {
+        payloads.push({ username, text: image });
+      }
+      if (text) {
+        payloads.push({ username, text });
+      }
 
-    for (const payload of payloads) {
-      const tempId = 'optimistic-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-      
-      // Optimistically append the message as 'sending' (single checkmark)
-      const optimisticMsg = {
-        id: tempId,
-        username,
-        text: payload.text,
-        createdAt: new Date().toISOString(),
-        status: 'sending'
-      };
-      setMessages((prev) => [...prev, optimisticMsg]);
+      for (const payload of payloads) {
+        const tempId = 'optimistic-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        
+        // Optimistically append the message as 'sending' (single checkmark)
+        const optimisticMsg = {
+          id: tempId,
+          username,
+          text: payload.text,
+          createdAt: new Date().toISOString(),
+          status: 'sending'
+        };
+        setMessages((prev) => [...prev, optimisticMsg]);
 
-      if (connected) {
-        socket.emit('message:send', { ...payload, tempId }, (ack) => {
-          if (!ack?.success) {
-            setSendError(ack?.error || 'Failed to send message.');
+        if (connected) {
+          socket.emit('message:send', { ...payload, tempId }, (ack) => {
+            if (!ack?.success) {
+              setSendError(ack?.error || 'Failed to send message.');
+              // Remove optimistic message if send failed
+              setMessages((prev) => prev.filter((m) => m.id !== tempId));
+            }
+          });
+        } else {
+          try {
+            const message = await sendMessageRest(payload);
+            // Replace the optimistic message with the resolved server message (double checkmark)
+            setMessages((prev) =>
+              prev.map((m) => (m.id === tempId ? { ...message, status: 'delivered' } : m))
+            );
+          } catch (err) {
+            console.error(err);
+            setSendError('Failed to send message. Please check your connection.');
             // Remove optimistic message if send failed
             setMessages((prev) => prev.filter((m) => m.id !== tempId));
           }
-        });
-      } else {
-        try {
-          const message = await sendMessageRest(payload);
-          // Replace the optimistic message with the resolved server message (double checkmark)
-          setMessages((prev) =>
-            prev.map((m) => (m.id === tempId ? { ...message, status: 'delivered' } : m))
-          );
-        } catch (err) {
-          console.error(err);
-          setSendError('Failed to send message. Please check your connection.');
-          // Remove optimistic message if send failed
-          setMessages((prev) => prev.filter((m) => m.id !== tempId));
         }
       }
+    } finally {
+      setIsSending(false);
     }
   }
 

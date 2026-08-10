@@ -18,6 +18,8 @@ const io = new Server(server, {
   cors: {
     origin: CLIENT_ORIGIN === '*' ? '*' : CLIENT_ORIGIN.split(','),
     methods: ['GET', 'POST'],
+    allowedHeaders: ['bypass-tunnel-reminder', 'x-pinggy-no-screen'],
+    credentials: true
   },
 });
 
