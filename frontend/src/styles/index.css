@@ -29,6 +29,10 @@ html, body, #root {
 }
 
 /* Base custom styles overrides for Bootstrap */
+input, select, textarea {
+  font-size: 16px !important; /* Force min 16px globally to prevent mobile browsers from auto-zooming on focus */
+}
+
 .card, .form-control, .btn {
   border-radius: 12px;
 }
