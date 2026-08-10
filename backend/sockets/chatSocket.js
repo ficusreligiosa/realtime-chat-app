@@ -1,0 +1,94 @@
+const { createMessage } = require('../db/messageStore');
+
+/**
+ * Tracks which usernames are currently online.
+ * Map<username, Set<socketId>> — a user can have multiple tabs/devices open,
+ * so we only mark them offline once every socket for that username disconnects.
+ */
+const onlineUsers = new Map();
+
+function addOnlineUser(username, socketId) {
+  if (!onlineUsers.has(username)) onlineUsers.set(username, new Set());
+  onlineUsers.get(username).add(socketId);
+}
+
+function removeOnlineUser(username, socketId) {
+  const sockets = onlineUsers.get(username);
+  if (!sockets) return;
+  sockets.delete(socketId);
+  if (sockets.size === 0) onlineUsers.delete(username);
+}
+
+function getOnlineUsernames() {
+  return Array.from(onlineUsers.keys());
+}
+
+module.exports = function registerChatSocket(io) {
+  io.on('connection', (socket) => {
+    console.log(`[socket] connected: ${socket.id}`);
+
+    // Client identifies itself right after connecting
+    socket.on('user:join', (username) => {
+      try {
+        if (!username || typeof username !== 'string') return;
+        socket.data.username = username.trim();
+        addOnlineUser(socket.data.username, socket.id);
+
+        // Let everyone know the updated online list
+        io.emit('users:online', getOnlineUsernames());
+        console.log(`[socket] ${socket.data.username} joined (${socket.id})`);
+      } catch (err) {
+        console.error('[socket] user:join error:', err);
+        socket.emit('error:message', 'Failed to join chat');
+      }
+    });
+
+    // Incoming chat message
+    socket.on('message:send', (payload, ack) => {
+      try {
+        const username = (payload && payload.username) || socket.data.username;
+        const text = payload && payload.text;
+
+        if (!username || !text || !text.trim()) {
+          const errMsg = 'username and text are required';
+          if (typeof ack === 'function') ack({ success: false, error: errMsg });
+          socket.emit('error:message', errMsg);
+          return;
+        }
+
+        const message = createMessage({ username: username.trim(), text: text.trim() });
+
+        // Broadcast to everyone, including sender, so all clients render from one source of truth
+        io.emit('message:new', message);
+
+        if (typeof ack === 'function') ack({ success: true, message });
+      } catch (err) {
+        console.error('[socket] message:send error:', err);
+        if (typeof ack === 'function') ack({ success: false, error: 'Failed to send message' });
+        socket.emit('error:message', 'Failed to send message');
+      }
+    });
+
+    // Typing indicator
+    socket.on('typing:start', (username) => {
+      socket.broadcast.emit('typing:update', { username: username || socket.data.username, isTyping: true });
+    });
+
+    socket.on('typing:stop', (username) => {
+      socket.broadcast.emit('typing:update', { username: username || socket.data.username, isTyping: false });
+    });
+
+    socket.on('disconnect', (reason) => {
+      try {
+        const username = socket.data.username;
+        if (username) {
+          removeOnlineUser(username, socket.id);
+          io.emit('users:online', getOnlineUsernames());
+          console.log(`[socket] ${username} disconnected (${reason})`);
+        }
+      } catch (err) {
+        console.error('[socket] disconnect handling error:', err);
+      }
+    });
+  });
+};
