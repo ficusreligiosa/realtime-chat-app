@@ -16,6 +16,7 @@ export default function ChatWindow({ username, onLogout }) {
   const [typingUsers, setTypingUsers] = useState([]);
   const [historyError, setHistoryError] = useState('');
   const [sendError, setSendError] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -139,20 +140,37 @@ export default function ChatWindow({ username, onLogout }) {
 
   return (
     <div className="chat-layout">
-      <aside className="sidebar">
+      {sidebarOpen && (
+        <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
+      )}
+      
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <span className="user-badge text-truncate">
             <i className="bi bi-person-circle text-primary" />
             {username}
           </span>
-          <button className="btn btn-leave" onClick={onLogout}>
-            Leave
-          </button>
+          <div className="d-flex align-items-center gap-2">
+            <button type="button" className="btn btn-close-sidebar d-md-none" onClick={() => setSidebarOpen(false)}>
+              <i className="bi bi-x-lg"></i>
+            </button>
+            <button className="btn btn-leave" onClick={onLogout}>
+              Leave
+            </button>
+          </div>
         </div>
         <OnlineUsers users={onlineUsers} currentUser={username} />
       </aside>
 
       <main className="chat-main">
+        <header className="chat-header">
+          <button type="button" className="btn btn-toggle-sidebar" onClick={() => setSidebarOpen(true)}>
+            <i className="bi bi-people-fill"></i>
+          </button>
+          <h2 className="chat-title">Global Room</h2>
+          <div className="d-md-none" style={{ width: 32 }} />
+        </header>
+
         <ConnectionBanner connected={connected} />
         {historyError && (
           <div className="custom-banner-error text-center">{historyError}</div>
