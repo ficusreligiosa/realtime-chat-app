@@ -25,7 +25,37 @@ export default function MessageBubble({ message, isOwn }) {
             className="bubble-image"
             onClick={() => {
               const w = window.open();
-              w.document.write(`<iframe src="${message.text}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+              w.document.write(`
+                <html>
+                  <head>
+                    <title>Image Viewer</title>
+                    <style>
+                      body {
+                        margin: 0;
+                        background: #0f0c20;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        min-height: 100vh;
+                        overflow: hidden;
+                        font-family: sans-serif;
+                      }
+                      img {
+                        max-width: 90vw;
+                        max-height: 90vh;
+                        object-fit: contain;
+                        box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+                        border-radius: 12px;
+                        border: 1px solid rgba(255,255,255,0.1);
+                      }
+                    </style>
+                  </head>
+                  <body>
+                    <img src="${message.text}" alt="Shared Image" />
+                  </body>
+                </html>
+              `);
+              w.document.close();
             }}
           />
         ) : (
