@@ -490,6 +490,41 @@ html, body, #root {
     visibility: visible;
     transform: translateX(0);
   }
+
+  /* Mobile text and icon scale optimization */
+  .chat-title {
+    font-size: 1.25rem !important;
+  }
+
+  .btn-toggle-sidebar {
+    font-size: 1.5rem !important;
+    padding: 6px 10px !important;
+  }
+
+  .message-author {
+    font-size: 0.85rem !important;
+  }
+
+  .message-text {
+    font-size: 1rem !important;
+  }
+
+  .custom-input {
+    font-size: 1rem !important;
+  }
+
+  .btn-attach {
+    font-size: 1.35rem !important;
+  }
+
+  .btn-send {
+    font-size: 1.25rem !important;
+  }
+
+  .image-preview-name {
+    font-size: 0.95rem !important;
+    max-width: 140px;
+  }
 }
 
 /* ---- Image Sharing & Rendering ---- */
