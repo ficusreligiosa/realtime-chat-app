@@ -8,6 +8,44 @@ import ConnectionBanner from './ConnectionBanner.jsx';
 
 const TYPING_STOP_DELAY = 1500;
 
+function compressImage(file, maxWidth, maxHeight, quality, callback) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+      
+      const head = 'data:image/jpeg;base64,'.length;
+      const sizeInBytes = Math.round((compressedDataUrl.length - head) * 0.75);
+
+      callback(compressedDataUrl, sizeInBytes);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 export default function ChatWindow({ username, onLogout }) {
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
@@ -132,21 +170,22 @@ export default function ChatWindow({ username, onLogout }) {
       return;
     }
 
-    const MAX_SIZE = 1024 * 1024; // 1MB
-    if (file.size > MAX_SIZE) {
-      setSendError('Image is too large. Please select an image under 1MB.');
-      return;
-    }
-
-    setSendError('');
+    setSendError('Compressing image...');
     setImageName(file.name);
-    setImageSize(file.size);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setImageDraft(event.target.result);
-    };
-    reader.readAsDataURL(file);
+    compressImage(file, 1200, 1200, 0.7, (compressedDataUrl, sizeInBytes) => {
+      const MAX_SIZE = 1.5 * 1024 * 1024; // 1.5MB safety margin
+      if (sizeInBytes > MAX_SIZE) {
+        setSendError('Compressed image is still too large. Please select a smaller photo.');
+        setImageDraft('');
+        setImageName('');
+        setImageSize(0);
+        return;
+      }
+      setSendError('');
+      setImageDraft(compressedDataUrl);
+      setImageSize(sizeInBytes);
+    });
 
     e.target.value = '';
   }
