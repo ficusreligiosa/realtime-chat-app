@@ -34,7 +34,17 @@ function getUsersPresenceList() {
   }));
 }
 
-module.exports = function registerChatSocket(io) {
+/**
+ * Determine message status based on whether other users are online.
+ * 'sent'      = saved to DB, no other users connected to receive it
+ * 'delivered'  = saved to DB AND at least one other user is connected
+ */
+function determineStatus(senderUsername) {
+  const others = getOnlineUsernames().filter(u => u !== senderUsername);
+  return others.length > 0 ? 'delivered' : 'sent';
+}
+
+function registerChatSocket(io) {
   io.on('connection', (socket) => {
     console.log(`[socket] connected: ${socket.id}`);
 
@@ -69,14 +79,15 @@ module.exports = function registerChatSocket(io) {
         }
 
         const message = createMessage({ username: username.trim(), text: text.trim() });
+        const status = determineStatus(username.trim());
 
-        // Broadcast to everyone, including sender, appending tempId so sender can link optimistic tick
-        io.emit('message:new', { ...message, tempId });
+        // Broadcast to everyone, including sender, with computed status and tempId
+        io.emit('message:new', { ...message, status, tempId });
 
         // If this is a new username sending a message, update the presence lists
         io.emit('users:presence', getUsersPresenceList());
 
-        if (typeof ack === 'function') ack({ success: true, message });
+        if (typeof ack === 'function') ack({ success: true, message: { ...message, status } });
       } catch (err) {
         console.error('[socket] message:send error:', err);
         if (typeof ack === 'function') ack({ success: false, error: 'Failed to send message' });
@@ -106,4 +117,6 @@ module.exports = function registerChatSocket(io) {
       }
     });
   });
-};
+}
+
+module.exports = { registerChatSocket, getOnlineUsernames };

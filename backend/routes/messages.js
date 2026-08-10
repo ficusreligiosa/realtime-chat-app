@@ -1,5 +1,6 @@
 const express = require('express');
 const { createMessage, getHistory } = require('../db/messageStore');
+const { getOnlineUsernames } = require('../sockets/chatSocket');
 
 module.exports = function messagesRouter(io) {
   const router = express.Router();
@@ -30,10 +31,14 @@ module.exports = function messagesRouter(io) {
 
       const message = createMessage({ username: username.trim(), text: text.trim() });
 
-      // Broadcast to all connected clients so REST-sent messages also show up live
-      io.emit('message:new', message);
+      // Determine status based on who is online
+      const others = getOnlineUsernames().filter(u => u !== username.trim());
+      const status = others.length > 0 ? 'delivered' : 'sent';
 
-      res.status(201).json({ success: true, message });
+      // Broadcast to all connected clients so REST-sent messages also show up live
+      io.emit('message:new', { ...message, status });
+
+      res.status(201).json({ success: true, message: { ...message, status } });
     } catch (err) {
       console.error('Failed to save message:', err);
       res.status(500).json({ success: false, error: 'Failed to send message' });
@@ -42,3 +47,4 @@ module.exports = function messagesRouter(io) {
 
   return router;
 };
+

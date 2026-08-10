@@ -55,7 +55,6 @@ export default function ChatWindow({ username, onLogout }) {
   const [historyError, setHistoryError] = useState('');
   const [sendError, setSendError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isSending, setIsSending] = useState(false);
 
   const [imageDraft, setImageDraft] = useState('');
   const [imageName, setImageName] = useState('');
@@ -67,6 +66,7 @@ export default function ChatWindow({ username, onLogout }) {
   const isTypingRef = useRef(false);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
+  const sendLockRef = useRef(false); // synchronous lock — React state is async and batched, so it can't prevent double-sends
 
   // Load history + connect socket on mount
   useEffect(() => {
@@ -75,21 +75,24 @@ export default function ChatWindow({ username, onLogout }) {
     fetchHistory(100)
       .then((history) => {
         if (!cancelled) {
-          setMessages(history);
-          // Pre-populate presence list from message history authors as offline fallback
+          // History messages are confirmed saved — mark them all as delivered
+          const historyWithStatus = history.map((m) => ({ ...m, status: 'delivered' }));
+          setMessages(historyWithStatus);
+
+          // Pre-populate presence list from message authors (offline fallback)
           const uniqueUsernames = Array.from(new Set(history.map((m) => m.username)))
             .filter((u) => u && u.trim());
-          
-          // Make sure current user is in the list
           if (!uniqueUsernames.includes(username)) {
             uniqueUsernames.push(username);
           }
-
-          const fallbackPresence = uniqueUsernames.map((u) => ({
-            username: u,
-            isOnline: u === username ? connected : false // current user status reflects connection state
-          }));
-          setOnlineUsers(fallbackPresence);
+          setOnlineUsers((prev) => {
+            // Only set fallback if we don't already have a server-provided list
+            if (prev.length > 0) return prev;
+            return uniqueUsernames.map((u) => ({
+              username: u,
+              isOnline: false
+            }));
+          });
         }
       })
       .catch((err) => {
@@ -111,12 +114,21 @@ export default function ChatWindow({ username, onLogout }) {
     }
     function handleNewMessage(message) {
       setMessages((prev) => {
-        // If we find an optimistic message with the matching tempId, replace it and set status to delivered
-        if (message.tempId && prev.some((m) => m.id === message.tempId)) {
-          return prev.map((m) => (m.id === message.tempId ? { ...message, status: 'delivered' } : m));
+        // 1. Replace optimistic message if tempId matches
+        if (message.tempId) {
+          const hasOptimistic = prev.some((m) => m.id === message.tempId);
+          if (hasOptimistic) {
+            return prev.map((m) =>
+              m.id === message.tempId
+                ? { ...message, id: message.id, status: message.status || 'delivered' }
+                : m
+            );
+          }
         }
-        if (prev.some((m) => m.id === message.id)) return prev; // avoid dupes from REST fallback
-        return [...prev, { ...message, status: 'delivered' }];
+        // 2. Skip if we already have this server message id (dedup)
+        if (prev.some((m) => m.id === message.id)) return prev;
+        // 3. New message from another user or from REST fallback
+        return [...prev, { ...message, status: message.status || 'delivered' }];
       });
     }
     function handleUsersPresence(presenceList) {
@@ -223,14 +235,15 @@ export default function ChatWindow({ username, onLogout }) {
 
   async function handleSend(e) {
     e.preventDefault();
-    if (isSending) return;
+
+    // Synchronous lock — React state is batched/async so it can't guard against rapid double-clicks
+    if (sendLockRef.current) return;
 
     const text = draft.trim();
     const image = imageDraft;
-
     if (!text && !image) return;
 
-    setIsSending(true);
+    sendLockRef.current = true;
     setDraft('');
     setImageDraft('');
     setImageName('');
@@ -239,53 +252,46 @@ export default function ChatWindow({ username, onLogout }) {
     clearTimeout(typingTimeoutRef.current);
     stopTyping();
 
-    try {
-      const payloads = [];
-      if (image) {
-        payloads.push({ username, text: image });
-      }
-      if (text) {
-        payloads.push({ username, text });
-      }
+    const payloads = [];
+    if (image) payloads.push({ username, text: image });
+    if (text) payloads.push({ username, text });
 
-      for (const payload of payloads) {
-        const tempId = 'optimistic-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-        
-        // Optimistically append the message as 'sending' (single checkmark)
-        const optimisticMsg = {
-          id: tempId,
-          username,
-          text: payload.text,
-          createdAt: new Date().toISOString(),
-          status: 'sending'
-        };
-        setMessages((prev) => [...prev, optimisticMsg]);
+    let remaining = payloads.length;
+    function unlock() {
+      remaining--;
+      if (remaining <= 0) sendLockRef.current = false;
+    }
 
-        if (connected) {
-          socket.emit('message:send', { ...payload, tempId }, (ack) => {
-            if (!ack?.success) {
-              setSendError(ack?.error || 'Failed to send message.');
-              // Remove optimistic message if send failed
-              setMessages((prev) => prev.filter((m) => m.id !== tempId));
-            }
-          });
-        } else {
-          try {
-            const message = await sendMessageRest(payload);
-            // Replace the optimistic message with the resolved server message (double checkmark)
-            setMessages((prev) =>
-              prev.map((m) => (m.id === tempId ? { ...message, status: 'delivered' } : m))
-            );
-          } catch (err) {
-            console.error(err);
-            setSendError('Failed to send message. Please check your connection.');
-            // Remove optimistic message if send failed
+    for (const payload of payloads) {
+      const tempId = 'temp-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+
+      // Optimistically show the message with 'sending' status (single grey tick)
+      setMessages((prev) => [
+        ...prev,
+        { id: tempId, username, text: payload.text, createdAt: new Date().toISOString(), status: 'sending' },
+      ]);
+
+      if (connected) {
+        socket.emit('message:send', { ...payload, tempId }, (ack) => {
+          if (!ack?.success) {
+            setSendError(ack?.error || 'Failed to send message.');
             setMessages((prev) => prev.filter((m) => m.id !== tempId));
           }
+          unlock();
+        });
+      } else {
+        try {
+          const message = await sendMessageRest(payload);
+          setMessages((prev) =>
+            prev.map((m) => (m.id === tempId ? { ...message, status: 'delivered' } : m))
+          );
+        } catch (err) {
+          console.error(err);
+          setSendError('Failed to send message. Please check your connection.');
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
         }
+        unlock();
       }
-    } finally {
-      setIsSending(false);
     }
   }
 

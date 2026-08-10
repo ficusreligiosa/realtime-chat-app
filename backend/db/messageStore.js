@@ -1,7 +1,7 @@
 const db = require('./index');
 
 const insertStmt = db.prepare(
-  `INSERT INTO messages (username, text, status) VALUES (?, ?, 'delivered')`
+  `INSERT INTO messages (username, text, status) VALUES (?, ?, 'sent')`
 );
 const listStmt = db.prepare(
   `SELECT id, username, text, created_at AS createdAt, status

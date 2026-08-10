@@ -6,7 +6,7 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 
 const messagesRouter = require('./routes/messages');
-const registerChatSocket = require('./sockets/chatSocket');
+const { registerChatSocket } = require('./sockets/chatSocket');
 
 const PORT = process.env.PORT || 5000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || '*';

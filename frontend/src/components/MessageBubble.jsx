@@ -13,6 +13,19 @@ function isDataURL(str) {
   return typeof str === 'string' && str.startsWith('data:image/');
 }
 
+function StatusTick({ status }) {
+  if (status === 'delivered') {
+    // Double blue tick — delivered to at least one other online user
+    return <i className="bi bi-check2-all" style={{ color: '#60a5fa', fontSize: '0.95rem' }} />;
+  }
+  if (status === 'sending') {
+    // Single grey tick — in transit, not yet confirmed by server
+    return <i className="bi bi-check2" style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem' }} />;
+  }
+  // 'sent' or default — single tick, confirmed by server but no other users online
+  return <i className="bi bi-check2" style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }} />;
+}
+
 export default function MessageBubble({ message, isOwn, onImageClick }) {
   return (
     <div className={`message-row mb-2 ${isOwn ? 'own' : ''}`}>
@@ -31,12 +44,8 @@ export default function MessageBubble({ message, isOwn, onImageClick }) {
         <div className="message-meta">
           <span>{formatTime(message.createdAt)}</span>
           {isOwn && (
-            <span title={message.status || 'sent'}>
-              {message.status === 'delivered' ? (
-                <i className="bi bi-check2-all" />
-              ) : (
-                <i className="bi bi-check2" />
-              )}
+            <span className="status-tick" title={message.status || 'sent'}>
+              <StatusTick status={message.status} />
             </span>
           )}
         </div>
