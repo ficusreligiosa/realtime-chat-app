@@ -27,6 +27,7 @@ export default function ChatWindow({ username, onLogout }) {
   const typingTimeoutRef = useRef(null);
   const isTypingRef = useRef(false);
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
 
   // Load history + connect socket on mount
   useEffect(() => {
@@ -116,6 +117,10 @@ export default function ChatWindow({ username, onLogout }) {
 
   function handleFileClick() {
     fileInputRef.current?.click();
+  }
+
+  function handleCameraClick() {
+    cameraInputRef.current?.click();
   }
 
   function handleFileChange(e) {
@@ -282,9 +287,21 @@ export default function ChatWindow({ username, onLogout }) {
             onChange={handleFileChange}
           />
 
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            ref={cameraInputRef}
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+
           <div className="input-container">
-            <button type="button" className="btn btn-attach" onClick={handleFileClick}>
+            <button type="button" className="btn btn-attach" onClick={handleFileClick} title="Upload Image">
               <i className="bi bi-image" />
+            </button>
+            <button type="button" className="btn btn-attach" onClick={handleCameraClick} title="Open Camera">
+              <i className="bi bi-camera-fill" />
             </button>
             <input
               type="text"
