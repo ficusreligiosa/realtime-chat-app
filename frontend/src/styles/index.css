@@ -134,9 +134,15 @@ html, body, #root {
 
 /* ---- Chat Layout ---- */
 .chat-layout {
-  display: flex;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
   height: 100vh;
   height: 100dvh;
+  display: flex;
   background: var(--bg-gradient);
   overflow: hidden;
 }
@@ -281,6 +287,7 @@ html, body, #root {
 
 .input-container .custom-input {
   flex-grow: 1;
+  min-width: 0;
 }
 
 .btn-send {
@@ -295,6 +302,7 @@ html, body, #root {
   font-size: 1.1rem;
   transition: all 0.3s ease !important;
   box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+  flex-shrink: 0 !important;
 }
 .btn-send:hover:not(:disabled) {
   background: var(--accent-purple-hover) !important;
@@ -553,6 +561,7 @@ html, body, #root {
   justify-content: center;
   font-size: 1.2rem;
   transition: all 0.2s ease !important;
+  flex-shrink: 0 !important;
 }
 .btn-attach:hover {
   background: rgba(255, 255, 255, 0.1) !important;
