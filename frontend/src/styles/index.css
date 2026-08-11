@@ -483,7 +483,7 @@ input, select, textarea {
   }
   
   .btn-close-sidebar {
-    display: inline-flex; /* show on mobile/tablet */
+    display: inline-flex;
   }
 
   .sidebar {
@@ -504,78 +504,110 @@ input, select, textarea {
     transform: translateX(0);
   }
 
-  /* Mobile text and icon scale optimization */
+  /* ---- LARGE mobile sizes so ~10 messages fit on screen ---- */
   .chat-header {
-    height: 50px;
+    height: 52px;
     padding: 0 0.75rem;
   }
 
   .chat-title {
-    font-size: 1.1rem !important;
+    font-size: 1.15rem !important;
   }
 
   .btn-toggle-sidebar {
-    font-size: 1.3rem !important;
-    padding: 4px 8px !important;
+    font-size: 1.4rem !important;
+    padding: 6px 10px !important;
   }
 
   .messages-list {
-    padding: 0.75rem;
-    gap: 8px;
+    padding: 10px;
+    gap: 6px;
   }
 
   .message-bubble {
-    max-width: 80%;
-    padding: 8px 12px;
-    border-radius: 14px;
+    max-width: 82%;
+    padding: 10px 14px;
+    border-radius: 16px;
   }
 
   .message-author {
-    font-size: 0.75rem !important;
+    font-size: 0.82rem !important;
+    font-weight: 700;
+    margin-bottom: 2px;
   }
 
   .message-text {
-    font-size: 0.92rem !important;
-    line-height: 1.4;
+    font-size: 1.05rem !important;
+    line-height: 1.45;
   }
 
   .message-meta {
-    font-size: 0.62rem;
-    gap: 3px;
+    font-size: 0.72rem;
+    gap: 4px;
+    margin-top: 3px;
   }
 
   .custom-input {
     font-size: 16px !important;
-    padding: 10px 12px !important;
+    padding: 12px 14px !important;
+    border-radius: 10px !important;
   }
 
   .input-area {
-    padding: 0.6rem 0.75rem;
+    padding: 8px 10px;
   }
 
   .btn-attach {
-    font-size: 1.1rem !important;
-    width: 38px !important;
-    height: 38px !important;
+    font-size: 1.3rem !important;
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 10px !important;
   }
 
   .btn-send {
-    font-size: 1rem !important;
-    width: 38px !important;
-    height: 38px !important;
+    font-size: 1.15rem !important;
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 10px !important;
   }
 
   .input-container {
-    gap: 6px !important;
+    gap: 8px !important;
   }
 
   .image-preview-name {
-    font-size: 0.85rem !important;
-    max-width: 120px;
+    font-size: 0.9rem !important;
+    max-width: 140px;
   }
 
   .bubble-image {
-    max-height: 180px;
+    max-height: 200px;
+    border-radius: 10px;
+  }
+
+  /* Online users panel — larger on mobile */
+  .online-section-title {
+    font-size: 0.8rem;
+    padding: 1rem 1rem 0.4rem 1rem;
+  }
+
+  .online-user-item {
+    font-size: 1rem;
+    padding: 10px 12px;
+  }
+
+  .status-dot {
+    width: 10px;
+    height: 10px;
+  }
+
+  /* Login card on mobile */
+  .login-card {
+    padding: 2rem 1.5rem;
+  }
+
+  .login-title {
+    font-size: 1.5rem;
   }
 }
 

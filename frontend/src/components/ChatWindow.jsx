@@ -172,6 +172,21 @@ export default function ChatWindow({ username, onLogout }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, typingUsers]);
 
+  // Keep messages visible when mobile keyboard opens/closes
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    function handleViewportResize() {
+      // When the keyboard opens, the visual viewport height shrinks.
+      // Scroll the message list to the bottom so recent messages stay visible.
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    }
+
+    vv.addEventListener('resize', handleViewportResize);
+    return () => vv.removeEventListener('resize', handleViewportResize);
+  }, []);
+
   const stopTyping = useCallback(() => {
     if (isTypingRef.current) {
       isTypingRef.current = false;
