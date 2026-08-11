@@ -15,9 +15,27 @@ export async function fetchHistory(limit = 100) {
 }
 
 // Fallback REST send, used only if the socket connection is currently down.
-export async function sendMessageRest({ username, text }) {
+export async function sendMessageRest(payload) {
   const res = await fetch(`${SERVER_URL}/api/messages`, {
     method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'bypass-tunnel-reminder': 'true',
+      'x-pinggy-no-screen': 'true'
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to send message: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.message;
+}
+
+export async function editMessageRest(id, { username, text }) {
+  const res = await fetch(`${SERVER_URL}/api/messages/${id}`, {
+    method: 'PUT',
     headers: { 
       'Content-Type': 'application/json',
       'bypass-tunnel-reminder': 'true',
@@ -27,7 +45,7 @@ export async function sendMessageRest({ username, text }) {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Failed to send message: ${res.status}`);
+    throw new Error(data.error || `Failed to edit message: ${res.status}`);
   }
   const data = await res.json();
   return data.message;

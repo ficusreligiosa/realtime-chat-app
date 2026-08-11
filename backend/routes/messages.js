@@ -1,5 +1,5 @@
 const express = require('express');
-const { createMessage, getHistory } = require('../db/messageStore');
+const { createMessage, updateMessageText, getHistory } = require('../db/messageStore');
 const { countOtherOnlineUsers } = require('../sockets/chatSocket');
 
 module.exports = function messagesRouter(io) {
@@ -20,7 +20,7 @@ module.exports = function messagesRouter(io) {
   // POST /api/messages -> send a message (REST fallback when socket is down)
   router.post('/', (req, res) => {
     try {
-      const { username, text } = req.body;
+      const { username, text, replyToId, replyToUsername, replyToText, isViewOnce } = req.body;
 
       if (!username || typeof username !== 'string' || !username.trim()) {
         return res.status(400).json({ success: false, error: 'username is required' });
@@ -29,7 +29,14 @@ module.exports = function messagesRouter(io) {
         return res.status(400).json({ success: false, error: 'text is required' });
       }
 
-      const message = createMessage({ username: username.trim(), text: text.trim() });
+      const message = createMessage({
+        username: username.trim(),
+        text: text.trim(),
+        replyToId,
+        replyToUsername,
+        replyToText,
+        isViewOnce,
+      });
       const othersOnline = countOtherOnlineUsers(username.trim());
       const status = othersOnline > 0 ? 'delivered' : 'sent';
 
@@ -41,6 +48,29 @@ module.exports = function messagesRouter(io) {
     } catch (err) {
       console.error('Failed to save message:', err);
       res.status(500).json({ success: false, error: 'Failed to send message' });
+    }
+  });
+
+  // PUT /api/messages/:id -> edit a message
+  router.put('/:id', (req, res) => {
+    try {
+      const { username, text } = req.body;
+      const id = parseInt(req.params.id, 10);
+
+      if (!id || !username || !text || !text.trim()) {
+        return res.status(400).json({ success: false, error: 'id, username, and text are required' });
+      }
+
+      const updated = updateMessageText(id, username.trim(), text.trim());
+      if (!updated) {
+        return res.status(404).json({ success: false, error: 'Message not found or unauthorized' });
+      }
+
+      io.emit('message:edited', updated);
+      res.json({ success: true, message: updated });
+    } catch (err) {
+      console.error('Failed to edit message:', err);
+      res.status(500).json({ success: false, error: 'Failed to edit message' });
     }
   });
 

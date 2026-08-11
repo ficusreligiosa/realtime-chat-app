@@ -20,8 +20,21 @@ db.exec(`
     username TEXT NOT NULL,
     text TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    status TEXT NOT NULL DEFAULT 'sent'
+    status TEXT NOT NULL DEFAULT 'sent',
+    reply_to_id INTEGER,
+    reply_to_username TEXT,
+    reply_to_text TEXT,
+    is_edited INTEGER DEFAULT 0,
+    is_view_once INTEGER DEFAULT 0
   );
 `);
 
+// Add columns if table already existed without them
+try { db.exec(`ALTER TABLE messages ADD COLUMN reply_to_id INTEGER;`); } catch (_) {}
+try { db.exec(`ALTER TABLE messages ADD COLUMN reply_to_username TEXT;`); } catch (_) {}
+try { db.exec(`ALTER TABLE messages ADD COLUMN reply_to_text TEXT;`); } catch (_) {}
+try { db.exec(`ALTER TABLE messages ADD COLUMN is_edited INTEGER DEFAULT 0;`); } catch (_) {}
+try { db.exec(`ALTER TABLE messages ADD COLUMN is_view_once INTEGER DEFAULT 0;`); } catch (_) {}
+
 module.exports = db;
+

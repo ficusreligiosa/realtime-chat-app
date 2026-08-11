@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { socket } from '../socket.js';
-import { fetchHistory, sendMessageRest } from '../api.js';
+import { fetchHistory, sendMessageRest, editMessageRest } from '../api.js';
 import MessageBubble from './MessageBubble.jsx';
 import TypingIndicator from './TypingIndicator.jsx';
 import OnlineUsers from './OnlineUsers.jsx';
@@ -56,6 +56,11 @@ export default function ChatWindow({ username, onLogout }) {
   const [sendError, setSendError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // New features state: Replying, Editing, View Once
+  const [replyingTo, setReplyingTo] = useState(null); // { id, username, text }
+  const [editingMessage, setEditingMessage] = useState(null); // { id, text }
+  const [isViewOnce, setIsViewOnce] = useState(false);
+
   const [imageDraft, setImageDraft] = useState('');
   const [imageName, setImageName] = useState('');
   const [imageSize, setImageSize] = useState(0);
@@ -66,7 +71,7 @@ export default function ChatWindow({ username, onLogout }) {
   const isTypingRef = useRef(false);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
-  const sendLockRef = useRef(false); // synchronous lock — React state is async and batched, so it can't prevent double-sends
+  const sendLockRef = useRef(false);
 
   // Load history + connect socket on mount
   useEffect(() => {
@@ -75,18 +80,15 @@ export default function ChatWindow({ username, onLogout }) {
     fetchHistory(100)
       .then((history) => {
         if (!cancelled) {
-          // History messages are confirmed saved — mark them all as delivered
           const historyWithStatus = history.map((m) => ({ ...m, status: 'delivered' }));
           setMessages(historyWithStatus);
 
-          // Pre-populate presence list from message authors (offline fallback)
           const uniqueUsernames = Array.from(new Set(history.map((m) => m.username)))
             .filter((u) => u && u.trim());
           if (!uniqueUsernames.includes(username)) {
             uniqueUsernames.push(username);
           }
           setOnlineUsers((prev) => {
-            // Only set fallback if we don't already have a server-provided list
             if (prev.length > 0) return prev;
             return uniqueUsernames.map((u) => ({
               username: u,
@@ -99,6 +101,7 @@ export default function ChatWindow({ username, onLogout }) {
         console.error(err);
         if (!cancelled) setHistoryError('Could not load previous messages.');
       });
+
     function handleConnect() {
       setConnected(true);
       socket.emit('user:join', username);
@@ -106,23 +109,31 @@ export default function ChatWindow({ username, onLogout }) {
         prev.map((u) => (u.username === username ? { ...u, isOnline: true } : u))
       );
     }
+
     function handleDisconnect() {
       setConnected(false);
       setOnlineUsers((prev) =>
         prev.map((u) => (u.username === username ? { ...u, isOnline: false } : u))
       );
     }
+
     function handleNewMessage(message) {
-      // This only fires for OTHER users' messages (server uses socket.broadcast.emit)
-      // The sender's own message is handled via the ack callback in handleSend
       setMessages((prev) => {
-        if (prev.some((m) => m.id === message.id)) return prev; // dedup safety
+        if (prev.some((m) => m.id === message.id)) return prev;
         return [...prev, { ...message, status: message.status || 'delivered' }];
       });
     }
+
+    function handleEditedMessage(editedMsg) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === editedMsg.id ? { ...m, ...editedMsg, isEdited: 1 } : m))
+      );
+    }
+
     function handleUsersPresence(presenceList) {
       setOnlineUsers(presenceList);
     }
+
     function handleTypingUpdate({ username: who, isTyping }) {
       if (who === username) return;
       setTypingUsers((prev) => {
@@ -130,6 +141,7 @@ export default function ChatWindow({ username, onLogout }) {
         return prev.filter((u) => u !== who);
       });
     }
+
     function handleSocketError(msg) {
       setSendError(msg);
     }
@@ -137,6 +149,7 @@ export default function ChatWindow({ username, onLogout }) {
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('message:new', handleNewMessage);
+    socket.on('message:edited', handleEditedMessage);
     socket.on('users:presence', handleUsersPresence);
     socket.on('typing:update', handleTypingUpdate);
     socket.on('error:message', handleSocketError);
@@ -148,6 +161,7 @@ export default function ChatWindow({ username, onLogout }) {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('message:new', handleNewMessage);
+      socket.off('message:edited', handleEditedMessage);
       socket.off('users:presence', handleUsersPresence);
       socket.off('typing:update', handleTypingUpdate);
       socket.off('error:message', handleSocketError);
@@ -167,8 +181,6 @@ export default function ChatWindow({ username, onLogout }) {
     if (!vv) return;
 
     function handleViewportResize() {
-      // When the keyboard opens, the visual viewport height shrinks.
-      // Scroll the message list to the bottom so recent messages stay visible.
       messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
     }
 
@@ -215,7 +227,7 @@ export default function ChatWindow({ username, onLogout }) {
     setImageName(file.name);
 
     compressImage(file, 1200, 1200, 0.7, (compressedDataUrl, sizeInBytes) => {
-      const MAX_SIZE = 1.5 * 1024 * 1024; // 1.5MB safety margin
+      const MAX_SIZE = 1.5 * 1024 * 1024;
       if (sizeInBytes > MAX_SIZE) {
         setSendError('Compressed image is still too large. Please select a smaller photo.');
         setImageDraft('');
@@ -235,12 +247,67 @@ export default function ChatWindow({ username, onLogout }) {
     setImageDraft('');
     setImageName('');
     setImageSize(0);
+    setIsViewOnce(false);
   }
+
+  const handleStartReply = (msg) => {
+    setEditingMessage(null);
+    setReplyingTo({
+      id: msg.id,
+      username: msg.username,
+      text: msg.text,
+    });
+  };
+
+  const handleStartEdit = (msg) => {
+    setReplyingTo(null);
+    setEditingMessage({
+      id: msg.id,
+      text: msg.text,
+    });
+    setDraft(msg.text);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessage(null);
+    setDraft('');
+  };
 
   async function handleSend(e) {
     e.preventDefault();
 
-    // Synchronous lock — React state is batched/async so it can't guard against rapid double-clicks
+    // Handling message edit mode
+    if (editingMessage) {
+      const newText = draft.trim();
+      if (!newText) return;
+
+      const editId = editingMessage.id;
+      setEditingMessage(null);
+      setDraft('');
+
+      // Optimistically update locally
+      setMessages((prev) =>
+        prev.map((m) => (m.id === editId ? { ...m, text: newText, isEdited: 1 } : m))
+      );
+
+      if (connected) {
+        socket.emit('message:edit', { id: editId, text: newText }, (ack) => {
+          if (!ack?.success) {
+            setSendError(ack?.error || 'Failed to edit message.');
+          }
+        });
+      } else {
+        try {
+          await editMessageRest(editId, { username, text: newText });
+        } catch (err) {
+          console.error(err);
+          setSendError('Failed to edit message via REST.');
+        }
+      }
+      return;
+    }
+
+    // Handling new message / image send
     if (sendLockRef.current) return;
 
     const text = draft.trim();
@@ -248,17 +315,40 @@ export default function ChatWindow({ username, onLogout }) {
     if (!text && !image) return;
 
     sendLockRef.current = true;
+    const currentReply = replyingTo;
+    const currentViewOnce = isViewOnce;
+
     setDraft('');
     setImageDraft('');
     setImageName('');
     setImageSize(0);
+    setReplyingTo(null);
+    setIsViewOnce(false);
     setSendError('');
     clearTimeout(typingTimeoutRef.current);
     stopTyping();
 
     const payloads = [];
-    if (image) payloads.push({ username, text: image });
-    if (text) payloads.push({ username, text });
+    if (image) {
+      payloads.push({
+        username,
+        text: image,
+        replyToId: currentReply?.id,
+        replyToUsername: currentReply?.username,
+        replyToText: currentReply?.text,
+        isViewOnce: currentViewOnce,
+      });
+    }
+    if (text) {
+      payloads.push({
+        username,
+        text,
+        replyToId: currentReply?.id,
+        replyToUsername: currentReply?.username,
+        replyToText: currentReply?.text,
+        isViewOnce: 0,
+      });
+    }
 
     let remaining = payloads.length;
     function unlock() {
@@ -269,16 +359,24 @@ export default function ChatWindow({ username, onLogout }) {
     for (const payload of payloads) {
       const tempId = 'temp-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
 
-      // Optimistically show the message with 'sending' status (single grey tick)
       setMessages((prev) => [
         ...prev,
-        { id: tempId, username, text: payload.text, createdAt: new Date().toISOString(), status: 'sending' },
+        {
+          id: tempId,
+          username,
+          text: payload.text,
+          replyToId: payload.replyToId,
+          replyToUsername: payload.replyToUsername,
+          replyToText: payload.replyToText,
+          isViewOnce: payload.isViewOnce,
+          createdAt: new Date().toISOString(),
+          status: 'sending',
+        },
       ]);
 
       if (connected) {
         socket.emit('message:send', { ...payload, tempId }, (ack) => {
           if (ack?.success) {
-            // Server confirmed — replace optimistic message with the real one + correct status
             const serverMsg = ack.message;
             setMessages((prev) =>
               prev.map((m) =>
@@ -363,6 +461,8 @@ export default function ChatWindow({ username, onLogout }) {
               message={m}
               isOwn={m.username === username}
               onImageClick={setLightboxImage}
+              onReply={handleStartReply}
+              onEdit={handleStartEdit}
             />
           ))}
           <TypingIndicator typingUsers={typingUsers} />
@@ -374,6 +474,32 @@ export default function ChatWindow({ username, onLogout }) {
         )}
 
         <form className="input-area" onSubmit={handleSend}>
+          {/* Replying banner */}
+          {replyingTo && (
+            <div className="input-action-banner reply-mode">
+              <div className="action-banner-info text-truncate">
+                <i className="bi bi-reply-fill me-1" />
+                Replying to <strong>@{replyingTo.username}</strong>: "{replyingTo.text.slice(0, 40)}"
+              </div>
+              <button type="button" className="btn-close-banner" onClick={() => setReplyingTo(null)}>
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+          )}
+
+          {/* Editing banner */}
+          {editingMessage && (
+            <div className="input-action-banner edit-mode">
+              <div className="action-banner-info text-truncate">
+                <i className="bi bi-pencil-fill me-1" />
+                Editing message
+              </div>
+              <button type="button" className="btn-close-banner" onClick={handleCancelEdit}>
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+          )}
+
           {imageDraft && (
             <div className="image-preview-bar">
               <div className="image-preview-wrapper">
@@ -383,6 +509,15 @@ export default function ChatWindow({ username, onLogout }) {
                 <div className="image-preview-name text-truncate">{imageName}</div>
                 <div className="image-preview-size">{(imageSize / 1024).toFixed(1)} KB</div>
               </div>
+              <button
+                type="button"
+                className={`btn-view-once-toggle ${isViewOnce ? 'active' : ''}`}
+                onClick={() => setIsViewOnce(!isViewOnce)}
+                title="Toggle View Once"
+              >
+                <i className={isViewOnce ? 'bi bi-1-circle-fill' : 'bi bi-1-circle'} />
+                <span className="ms-1 d-none d-sm-inline">View Once</span>
+              </button>
               <button type="button" className="btn btn-remove-preview" onClick={handleRemoveImage}>
                 <i className="bi bi-x-lg"></i>
               </button>
@@ -416,14 +551,14 @@ export default function ChatWindow({ username, onLogout }) {
             <input
               type="text"
               className="form-control custom-input"
-              placeholder="Type a message..."
+              placeholder={editingMessage ? 'Edit your message...' : 'Type a message...'}
               value={draft}
               onChange={handleDraftChange}
               onBlur={stopTyping}
               maxLength={2000}
             />
             <button type="submit" className="btn btn-send" disabled={!draft.trim() && !imageDraft}>
-              <i className="bi bi-send-fill" />
+              <i className={editingMessage ? 'bi bi-check-lg' : 'bi bi-send-fill'} />
             </button>
           </div>
         </form>

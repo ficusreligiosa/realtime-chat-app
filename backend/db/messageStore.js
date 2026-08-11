@@ -1,29 +1,57 @@
 const db = require('./index');
 
 const insertStmt = db.prepare(
-  `INSERT INTO messages (username, text, status) VALUES (?, ?, 'sent')`
+  `INSERT INTO messages (username, text, status, reply_to_id, reply_to_username, reply_to_text, is_view_once)
+   VALUES (?, ?, 'sent', ?, ?, ?, ?)`
 );
+
 const listStmt = db.prepare(
-  `SELECT id, username, text, created_at AS createdAt, status
+  `SELECT id, username, text, created_at AS createdAt, status,
+          reply_to_id AS replyToId, reply_to_username AS replyToUsername, reply_to_text AS replyToText,
+          is_edited AS isEdited, is_view_once AS isViewOnce
    FROM messages
    ORDER BY id ASC
    LIMIT ?`
 );
+
 const countStmt = db.prepare(`SELECT COUNT(*) AS count FROM messages`);
+
+const getByIdStmt = db.prepare(
+  `SELECT id, username, text, created_at AS createdAt, status,
+          reply_to_id AS replyToId, reply_to_username AS replyToUsername, reply_to_text AS replyToText,
+          is_edited AS isEdited, is_view_once AS isViewOnce
+   FROM messages WHERE id = ?`
+);
+
+const updateTextStmt = db.prepare(
+  `UPDATE messages SET text = ?, is_edited = 1 WHERE id = ? AND username = ?`
+);
 
 /**
  * Persist a new chat message.
- * @param {{username: string, text: string}} payload
+ * @param {{username: string, text: string, replyToId?: number, replyToUsername?: string, replyToText?: string, isViewOnce?: boolean|number}} payload
  * @returns {object} the saved message row
  */
-function createMessage({ username, text }) {
-  const info = insertStmt.run(username, text);
+function createMessage({ username, text, replyToId = null, replyToUsername = null, replyToText = null, isViewOnce = 0 }) {
+  const info = insertStmt.run(
+    username,
+    text,
+    replyToId || null,
+    replyToUsername || null,
+    replyToText || null,
+    isViewOnce ? 1 : 0
+  );
   return getMessageById(info.lastInsertRowid);
 }
 
-const getByIdStmt = db.prepare(
-  `SELECT id, username, text, created_at AS createdAt, status FROM messages WHERE id = ?`
-);
+function updateMessageText(id, username, text) {
+  const result = updateTextStmt.run(text, id, username);
+  if (result.changes > 0) {
+    return getMessageById(id);
+  }
+  return null;
+}
+
 function getMessageById(id) {
   return getByIdStmt.get(id);
 }
@@ -39,7 +67,9 @@ function getHistory(limit = 100) {
   // grab the last `limit` rows in ascending order
   const rows = db
     .prepare(
-      `SELECT id, username, text, created_at AS createdAt, status
+      `SELECT id, username, text, created_at AS createdAt, status,
+              reply_to_id AS replyToId, reply_to_username AS replyToUsername, reply_to_text AS replyToText,
+              is_edited AS isEdited, is_view_once AS isViewOnce
        FROM messages ORDER BY id DESC LIMIT ?`
     )
     .all(limit);
@@ -61,6 +91,7 @@ function getAllUsernames() {
 
 module.exports = {
   createMessage,
+  updateMessageText,
   getHistory,
   getMessageById,
   getAllUsernames,

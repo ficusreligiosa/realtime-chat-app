@@ -1,4 +1,4 @@
-const { createMessage, getAllUsernames } = require('../db/messageStore');
+const { createMessage, updateMessageText, getAllUsernames } = require('../db/messageStore');
 
 /**
  * Tracks which usernames are currently online.
@@ -95,7 +95,14 @@ function registerChatSocket(io) {
           return;
         }
 
-        const message = createMessage({ username: username.trim(), text: text.trim() });
+        const message = createMessage({
+          username: username.trim(),
+          text: text.trim(),
+          replyToId: payload.replyToId,
+          replyToUsername: payload.replyToUsername,
+          replyToText: payload.replyToText,
+          isViewOnce: payload.isViewOnce,
+        });
         const othersOnline = countOtherOnlineUsers(username.trim());
         const status = othersOnline > 0 ? 'delivered' : 'sent';
 
@@ -112,6 +119,28 @@ function registerChatSocket(io) {
         console.error('[socket] message:send error:', err);
         if (typeof ack === 'function') ack({ success: false, error: 'Failed to send message' });
         socket.emit('error:message', 'Failed to send message');
+      }
+    });
+
+    socket.on('message:edit', (payload, ack) => {
+      try {
+        const username = socket.data.username;
+        const { id, text } = payload || {};
+        if (!username || !id || !text || !text.trim()) {
+          if (typeof ack === 'function') ack({ success: false, error: 'Invalid edit payload' });
+          return;
+        }
+
+        const updated = updateMessageText(id, username, text.trim());
+        if (updated) {
+          io.emit('message:edited', updated);
+          if (typeof ack === 'function') ack({ success: true, message: updated });
+        } else {
+          if (typeof ack === 'function') ack({ success: false, error: 'Cannot edit message' });
+        }
+      } catch (err) {
+        console.error('[socket] message:edit error:', err);
+        if (typeof ack === 'function') ack({ success: false, error: 'Failed to edit message' });
       }
     });
 
