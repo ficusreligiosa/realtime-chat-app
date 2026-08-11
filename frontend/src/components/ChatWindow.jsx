@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { socket } from '../socket.js';
-import { fetchHistory, sendMessageRest, editMessageRest } from '../api.js';
+import { fetchHistory, sendMessageRest, editMessageRest, deleteMessageRest, clearChatRest } from '../api.js';
 import MessageBubble from './MessageBubble.jsx';
 import TypingIndicator from './TypingIndicator.jsx';
 import OnlineUsers from './OnlineUsers.jsx';
@@ -56,10 +56,12 @@ export default function ChatWindow({ username, onLogout }) {
   const [sendError, setSendError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // New features state: Replying, Editing, View Once
-  const [replyingTo, setReplyingTo] = useState(null); // { id, username, text }
-  const [editingMessage, setEditingMessage] = useState(null); // { id, text }
+  // Feature states: Replying, Editing, View Once, Deleting, Clearing Chat
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [editingMessage, setEditingMessage] = useState(null);
   const [isViewOnce, setIsViewOnce] = useState(false);
+  const [msgToDelete, setMsgToDelete] = useState(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const [imageDraft, setImageDraft] = useState('');
   const [imageName, setImageName] = useState('');
@@ -71,6 +73,7 @@ export default function ChatWindow({ username, onLogout }) {
   const isTypingRef = useRef(false);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
+  const inputRef = useRef(null);
   const sendLockRef = useRef(false);
 
   // Load history + connect socket on mount
@@ -130,6 +133,14 @@ export default function ChatWindow({ username, onLogout }) {
       );
     }
 
+    function handleDeletedMessage({ id }) {
+      setMessages((prev) => prev.filter((m) => m.id !== id));
+    }
+
+    function handleChatCleared() {
+      setMessages([]);
+    }
+
     function handleUsersPresence(presenceList) {
       setOnlineUsers(presenceList);
     }
@@ -150,6 +161,8 @@ export default function ChatWindow({ username, onLogout }) {
     socket.on('disconnect', handleDisconnect);
     socket.on('message:new', handleNewMessage);
     socket.on('message:edited', handleEditedMessage);
+    socket.on('message:deleted', handleDeletedMessage);
+    socket.on('chat:cleared', handleChatCleared);
     socket.on('users:presence', handleUsersPresence);
     socket.on('typing:update', handleTypingUpdate);
     socket.on('error:message', handleSocketError);
@@ -162,6 +175,8 @@ export default function ChatWindow({ username, onLogout }) {
       socket.off('disconnect', handleDisconnect);
       socket.off('message:new', handleNewMessage);
       socket.off('message:edited', handleEditedMessage);
+      socket.off('message:deleted', handleDeletedMessage);
+      socket.off('chat:cleared', handleChatCleared);
       socket.off('users:presence', handleUsersPresence);
       socket.off('typing:update', handleTypingUpdate);
       socket.off('error:message', handleSocketError);
@@ -266,6 +281,7 @@ export default function ChatWindow({ username, onLogout }) {
       text: msg.text,
     });
     setDraft(msg.text);
+    inputRef.current?.focus();
   };
 
   const handleCancelEdit = () => {
@@ -273,8 +289,45 @@ export default function ChatWindow({ username, onLogout }) {
     setDraft('');
   };
 
+  const handleConfirmDeleteMessage = async () => {
+    if (!msgToDelete) return;
+    const delId = msgToDelete.id;
+    setMsgToDelete(null);
+
+    // Optimistic remove
+    setMessages((prev) => prev.filter((m) => m.id !== delId));
+
+    if (connected) {
+      socket.emit('message:delete', { id: delId });
+    } else {
+      try {
+        await deleteMessageRest(delId);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+  const handleConfirmClearChat = async () => {
+    setShowClearConfirm(false);
+    setMessages([]);
+
+    if (connected) {
+      socket.emit('chat:clear');
+    } else {
+      try {
+        await clearChatRest();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
   async function handleSend(e) {
     e.preventDefault();
+
+    // Focus input field immediately to keep mobile soft keyboard open!
+    inputRef.current?.focus();
 
     // Handling message edit mode
     if (editingMessage) {
@@ -285,7 +338,6 @@ export default function ChatWindow({ username, onLogout }) {
       setEditingMessage(null);
       setDraft('');
 
-      // Optimistically update locally
       setMessages((prev) =>
         prev.map((m) => (m.id === editId ? { ...m, text: newText, isEdited: 1 } : m))
       );
@@ -301,13 +353,12 @@ export default function ChatWindow({ username, onLogout }) {
           await editMessageRest(editId, { username, text: newText });
         } catch (err) {
           console.error(err);
-          setSendError('Failed to edit message via REST.');
+          setSendError('Failed to edit message.');
         }
       }
       return;
     }
 
-    // Handling new message / image send
     if (sendLockRef.current) return;
 
     const text = draft.trim();
@@ -336,7 +387,7 @@ export default function ChatWindow({ username, onLogout }) {
         replyToId: currentReply?.id,
         replyToUsername: currentReply?.username,
         replyToText: currentReply?.text,
-        isViewOnce: currentViewOnce,
+        isViewOnce: currentViewOnce ? 1 : 0,
       });
     }
     if (text) {
@@ -413,6 +464,7 @@ export default function ChatWindow({ username, onLogout }) {
         <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
       )}
 
+      {/* Lightbox Modal */}
       {lightboxImage && (
         <div className="lightbox-overlay" onClick={() => setLightboxImage(null)}>
           <button type="button" className="btn-close-lightbox" onClick={() => setLightboxImage(null)}>
@@ -421,7 +473,49 @@ export default function ChatWindow({ username, onLogout }) {
           <img src={lightboxImage} alt="Fullscreen Preview" className="lightbox-image" />
         </div>
       )}
-      
+
+      {/* Delete Single Message Confirmation Modal */}
+      {msgToDelete && (
+        <div className="custom-modal-overlay" onClick={() => setMsgToDelete(null)}>
+          <div className="custom-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-icon-wrapper text-danger">
+              <i className="bi bi-trash3-fill" />
+            </div>
+            <h5>Delete Message?</h5>
+            <p>This message will be deleted for everyone in the chat.</p>
+            <div className="d-flex justify-content-end gap-2 mt-4">
+              <button className="btn btn-outline-secondary" onClick={() => setMsgToDelete(null)}>
+                Cancel
+              </button>
+              <button className="btn btn-danger" onClick={handleConfirmDeleteMessage}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Chat Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="custom-modal-overlay" onClick={() => setShowClearConfirm(false)}>
+          <div className="custom-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-icon-wrapper text-danger">
+              <i className="bi bi-exclamation-triangle-fill" />
+            </div>
+            <h5>Clear All Chat?</h5>
+            <p>Are you sure you want to clear all chat history for everyone?</p>
+            <div className="d-flex justify-content-end gap-2 mt-4">
+              <button className="btn btn-outline-secondary" onClick={() => setShowClearConfirm(false)}>
+                Cancel
+              </button>
+              <button className="btn btn-danger" onClick={handleConfirmClearChat}>
+                Clear All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <span className="user-badge text-truncate">
@@ -446,7 +540,14 @@ export default function ChatWindow({ username, onLogout }) {
             <i className="bi bi-people-fill"></i>
           </button>
           <h2 className="chat-title">Global Room</h2>
-          <div className="d-lg-none" style={{ width: 32 }} />
+          <button
+            type="button"
+            className="btn btn-clear-chat ms-auto"
+            onClick={() => setShowClearConfirm(true)}
+            title="Clear all chat history"
+          >
+            <i className="bi bi-trash3-fill" />
+          </button>
         </header>
 
         <ConnectionBanner connected={connected} />
@@ -463,6 +564,7 @@ export default function ChatWindow({ username, onLogout }) {
               onImageClick={setLightboxImage}
               onReply={handleStartReply}
               onEdit={handleStartEdit}
+              onDelete={setMsgToDelete}
             />
           ))}
           <TypingIndicator typingUsers={typingUsers} />
@@ -474,7 +576,6 @@ export default function ChatWindow({ username, onLogout }) {
         )}
 
         <form className="input-area" onSubmit={handleSend}>
-          {/* Replying banner */}
           {replyingTo && (
             <div className="input-action-banner reply-mode">
               <div className="action-banner-info text-truncate">
@@ -487,7 +588,6 @@ export default function ChatWindow({ username, onLogout }) {
             </div>
           )}
 
-          {/* Editing banner */}
           {editingMessage && (
             <div className="input-action-banner edit-mode">
               <div className="action-banner-info text-truncate">
@@ -515,8 +615,8 @@ export default function ChatWindow({ username, onLogout }) {
                 onClick={() => setIsViewOnce(!isViewOnce)}
                 title="Toggle View Once"
               >
-                <i className={isViewOnce ? 'bi bi-1-circle-fill' : 'bi bi-1-circle'} />
-                <span className="ms-1 d-none d-sm-inline">View Once</span>
+                <i className={isViewOnce ? 'bi bi-1-circle-fill text-warning' : 'bi bi-1-circle'} />
+                <span className="ms-1 d-inline">View Once</span>
               </button>
               <button type="button" className="btn btn-remove-preview" onClick={handleRemoveImage}>
                 <i className="bi bi-x-lg"></i>
@@ -549,6 +649,7 @@ export default function ChatWindow({ username, onLogout }) {
               <i className="bi bi-camera-fill" />
             </button>
             <input
+              ref={inputRef}
               type="text"
               className="form-control custom-input"
               placeholder={editingMessage ? 'Edit your message...' : 'Type a message...'}
@@ -557,7 +658,12 @@ export default function ChatWindow({ username, onLogout }) {
               onBlur={stopTyping}
               maxLength={2000}
             />
-            <button type="submit" className="btn btn-send" disabled={!draft.trim() && !imageDraft}>
+            <button
+              type="submit"
+              className="btn btn-send"
+              disabled={!draft.trim() && !imageDraft}
+              onMouseDown={(e) => e.preventDefault()}
+            >
               <i className={editingMessage ? 'bi bi-check-lg' : 'bi bi-send-fill'} />
             </button>
           </div>

@@ -773,25 +773,78 @@ input, select, textarea {
   100% { background: transparent; transform: scale(1); }
 }
 
-/* Edit button & tag */
-.btn-bubble-edit {
+/* Edit & Delete Action Buttons in Message Meta */
+.btn-bubble-action {
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.5);
   font-size: 0.75rem;
-  padding: 0 2px;
+  padding: 0 3px;
   cursor: pointer;
-  transition: color 0.2s;
+  transition: color 0.2s ease;
 }
-.btn-bubble-edit:hover {
+.btn-bubble-action:hover {
   color: #ffffff;
 }
-
-.edited-tag {
-  font-size: 0.65rem;
-  opacity: 0.6;
-  font-style: italic;
+.btn-bubble-delete:hover {
+  color: #fca5a5 !important;
 }
+
+/* Clear Chat Trash Bin Button in Header */
+.btn-clear-chat {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border: 1px solid rgba(239, 68, 68, 0.25) !important;
+  color: #fca5a5 !important;
+  font-size: 1.1rem;
+  padding: 6px 12px;
+  border-radius: 10px !important;
+  transition: all 0.2s ease !important;
+}
+.btn-clear-chat:hover {
+  background: rgba(239, 68, 68, 0.3) !important;
+  color: #ffffff !important;
+  transform: scale(1.05);
+}
+
+/* ---- Confirmation Modals ---- */
+.custom-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2050;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(10, 8, 22, 0.85);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.custom-modal-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  backdrop-filter: blur(16px);
+  border-radius: 20px;
+  padding: 1.75rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  animation: modalSlide 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.modal-icon-wrapper {
+  font-size: 2.2rem;
+  margin-bottom: 0.75rem;
+}
+
+@keyframes modalSlide {
+  from { transform: scale(0.9) translateY(15px); opacity: 0; }
+  to { transform: scale(1) translateY(0); opacity: 1; }
+}
+
 
 /* ---- View Once Photo ---- */
 .btn-view-once {

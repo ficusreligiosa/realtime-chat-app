@@ -1,12 +1,10 @@
-const { createMessage, updateMessageText, getAllUsernames } = require('../db/messageStore');
+const { createMessage, updateMessageText, deleteMessage, clearAllMessages, getAllUsernames } = require('../db/messageStore');
 
 /**
  * Tracks which usernames are currently online.
- * Map<username (lowercased), Set<socketId>> — a user can have multiple tabs/devices open,
- * so we only mark them offline once every socket for that username disconnects.
- * We also store the original-case display name.
+ * Map<username (lowercased), Set<socketId>>
  */
-const onlineUsers = new Map(); // key: lowercase username, value: { displayName, sockets: Set<socketId> }
+const onlineUsers = new Map();
 
 function addOnlineUser(username, socketId) {
   const key = username.toLowerCase();
@@ -34,13 +32,11 @@ function getUsersPresenceList() {
   const seen = new Set();
   const result = [];
 
-  // Add all online users first
   for (const [key, entry] of onlineUsers) {
     seen.add(key);
     result.push({ username: entry.displayName, isOnline: true });
   }
 
-  // Add offline users from DB history
   for (const dbUser of dbUsers) {
     const k = dbUser.toLowerCase();
     if (!seen.has(k)) {
@@ -52,9 +48,6 @@ function getUsersPresenceList() {
   return result;
 }
 
-/**
- * Count how many OTHER users (not the sender) are currently online.
- */
 function countOtherOnlineUsers(senderUsername) {
   const senderKey = senderUsername.toLowerCase();
   let count = 0;
@@ -109,7 +102,6 @@ function registerChatSocket(io) {
         // Broadcast to everyone EXCEPT the sender — sender updates via ack callback
         socket.broadcast.emit('message:new', { ...message, status: 'delivered' });
 
-        // Ack to sender with the correct status for their own message
         if (typeof ack === 'function') {
           ack({ success: true, message: { ...message, status, tempId } });
         }
@@ -141,6 +133,34 @@ function registerChatSocket(io) {
       } catch (err) {
         console.error('[socket] message:edit error:', err);
         if (typeof ack === 'function') ack({ success: false, error: 'Failed to edit message' });
+      }
+    });
+
+    socket.on('message:delete', (payload, ack) => {
+      try {
+        const { id } = payload || {};
+        if (!id) {
+          if (typeof ack === 'function') ack({ success: false, error: 'Message ID is required' });
+          return;
+        }
+
+        deleteMessage(id);
+        io.emit('message:deleted', { id });
+        if (typeof ack === 'function') ack({ success: true, id });
+      } catch (err) {
+        console.error('[socket] message:delete error:', err);
+        if (typeof ack === 'function') ack({ success: false, error: 'Failed to delete message' });
+      }
+    });
+
+    socket.on('chat:clear', (_, ack) => {
+      try {
+        clearAllMessages();
+        io.emit('chat:cleared');
+        if (typeof ack === 'function') ack({ success: true });
+      } catch (err) {
+        console.error('[socket] chat:clear error:', err);
+        if (typeof ack === 'function') ack({ success: false, error: 'Failed to clear chat' });
       }
     });
 

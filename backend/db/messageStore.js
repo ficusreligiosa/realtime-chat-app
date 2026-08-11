@@ -27,10 +27,11 @@ const updateTextStmt = db.prepare(
   `UPDATE messages SET text = ?, is_edited = 1 WHERE id = ? AND username = ?`
 );
 
+const deleteStmt = db.prepare(`DELETE FROM messages WHERE id = ?`);
+const clearAllStmt = db.prepare(`DELETE FROM messages`);
+
 /**
  * Persist a new chat message.
- * @param {{username: string, text: string, replyToId?: number, replyToUsername?: string, replyToText?: string, isViewOnce?: boolean|number}} payload
- * @returns {object} the saved message row
  */
 function createMessage({ username, text, replyToId = null, replyToUsername = null, replyToText = null, isViewOnce = 0 }) {
   const info = insertStmt.run(
@@ -52,6 +53,16 @@ function updateMessageText(id, username, text) {
   return null;
 }
 
+function deleteMessage(id) {
+  const result = deleteStmt.run(id);
+  return result.changes > 0;
+}
+
+function clearAllMessages() {
+  clearAllStmt.run();
+  return true;
+}
+
 function getMessageById(id) {
   return getByIdStmt.get(id);
 }
@@ -64,7 +75,6 @@ function getHistory(limit = 100) {
   if (total <= limit) {
     return listStmt.all(limit);
   }
-  // grab the last `limit` rows in ascending order
   const rows = db
     .prepare(
       `SELECT id, username, text, created_at AS createdAt, status,
@@ -92,6 +102,8 @@ function getAllUsernames() {
 module.exports = {
   createMessage,
   updateMessageText,
+  deleteMessage,
+  clearAllMessages,
   getHistory,
   getMessageById,
   getAllUsernames,

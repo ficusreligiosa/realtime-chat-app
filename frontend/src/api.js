@@ -14,7 +14,6 @@ export async function fetchHistory(limit = 100) {
   return data.messages;
 }
 
-// Fallback REST send, used only if the socket connection is currently down.
 export async function sendMessageRest(payload) {
   const res = await fetch(`${SERVER_URL}/api/messages`, {
     method: 'POST',
@@ -49,4 +48,34 @@ export async function editMessageRest(id, { username, text }) {
   }
   const data = await res.json();
   return data.message;
+}
+
+export async function deleteMessageRest(id) {
+  const res = await fetch(`${SERVER_URL}/api/messages/${id}`, {
+    method: 'DELETE',
+    headers: { 
+      'bypass-tunnel-reminder': 'true',
+      'x-pinggy-no-screen': 'true'
+    },
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to delete message: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function clearChatRest() {
+  const res = await fetch(`${SERVER_URL}/api/messages`, {
+    method: 'DELETE',
+    headers: { 
+      'bypass-tunnel-reminder': 'true',
+      'x-pinggy-no-screen': 'true'
+    },
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to clear chat: ${res.status}`);
+  }
+  return res.json();
 }

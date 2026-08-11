@@ -1,5 +1,5 @@
 const express = require('express');
-const { createMessage, updateMessageText, getHistory } = require('../db/messageStore');
+const { createMessage, updateMessageText, deleteMessage, clearAllMessages, getHistory } = require('../db/messageStore');
 const { countOtherOnlineUsers } = require('../sockets/chatSocket');
 
 module.exports = function messagesRouter(io) {
@@ -17,7 +17,7 @@ module.exports = function messagesRouter(io) {
     }
   });
 
-  // POST /api/messages -> send a message (REST fallback when socket is down)
+  // POST /api/messages -> send a message
   router.post('/', (req, res) => {
     try {
       const { username, text, replyToId, replyToUsername, replyToText, isViewOnce } = req.body;
@@ -40,10 +40,7 @@ module.exports = function messagesRouter(io) {
       const othersOnline = countOtherOnlineUsers(username.trim());
       const status = othersOnline > 0 ? 'delivered' : 'sent';
 
-      // Broadcast to all connected sockets so other users see the message in real-time
       io.emit('message:new', { ...message, status: 'delivered' });
-
-      // Respond to the REST caller with their own status
       res.status(201).json({ success: true, message: { ...message, status } });
     } catch (err) {
       console.error('Failed to save message:', err);
@@ -71,6 +68,33 @@ module.exports = function messagesRouter(io) {
     } catch (err) {
       console.error('Failed to edit message:', err);
       res.status(500).json({ success: false, error: 'Failed to edit message' });
+    }
+  });
+
+  // DELETE /api/messages/:id -> delete a single message
+  router.delete('/:id', (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!id) return res.status(400).json({ success: false, error: 'Invalid message ID' });
+
+      deleteMessage(id);
+      io.emit('message:deleted', { id });
+      res.json({ success: true, id });
+    } catch (err) {
+      console.error('Failed to delete message:', err);
+      res.status(500).json({ success: false, error: 'Failed to delete message' });
+    }
+  });
+
+  // DELETE /api/messages -> clear all chat messages
+  router.delete('/', (req, res) => {
+    try {
+      clearAllMessages();
+      io.emit('chat:cleared');
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Failed to clear chat:', err);
+      res.status(500).json({ success: false, error: 'Failed to clear chat' });
     }
   });
 

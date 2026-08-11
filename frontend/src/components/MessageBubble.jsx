@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 function formatTime(isoLike) {
   try {
@@ -17,7 +17,6 @@ function isDataURL(str) {
 
 function renderTextWithLinks(text) {
   if (!text) return null;
-  // Regex to match http, https, or www URLs
   const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/g;
   const parts = text.split(urlRegex);
 
@@ -51,12 +50,14 @@ function StatusTick({ status }) {
   return <i className="bi bi-check2" style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem' }} />;
 }
 
-export default function MessageBubble({ message, isOwn, onImageClick, onReply, onEdit }) {
+export default function MessageBubble({ message, isOwn, onImageClick, onReply, onEdit, onDelete }) {
   const [touchStart, setTouchStart] = useState({ x: 0, y: 0 });
   const [swipeOffset, setSwipeOffset] = useState(0);
+  const longPressTimerRef = useRef(null);
+  const isLongPressRef = useRef(false);
 
   // View once state for images
-  const isViewOnceMsg = Boolean(message.isViewOnce || message.is_view_once);
+  const isViewOnceMsg = Boolean(message.isViewOnce || message.is_view_once || message.isViewOnce === 1);
   const [viewOnceOpened, setViewOnceOpened] = useState(() => {
     if (!isViewOnceMsg) return false;
     return localStorage.getItem(`view_once_${message.id}`) === 'true';
@@ -65,6 +66,16 @@ export default function MessageBubble({ message, isOwn, onImageClick, onReply, o
   const handleTouchStart = (e) => {
     const touch = e.touches[0];
     setTouchStart({ x: touch.clientX, y: touch.clientY });
+    isLongPressRef.current = false;
+
+    // Start 500ms long-press timer for deletion
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressRef.current = true;
+      if (window.navigator?.vibrate) {
+        window.navigator.vibrate(50); // haptic feedback
+      }
+      onDelete(message);
+    }, 500);
   };
 
   const handleTouchMove = (e) => {
@@ -72,14 +83,20 @@ export default function MessageBubble({ message, isOwn, onImageClick, onReply, o
     const deltaX = touch.clientX - touchStart.x;
     const deltaY = Math.abs(touch.clientY - touchStart.y);
 
-    // Only swipe right if horizontal drag dominates
+    // Cancel long press if user moves finger
+    if (Math.abs(deltaX) > 10 || deltaY > 10) {
+      clearTimeout(longPressTimerRef.current);
+    }
+
+    // Swipe right to reply
     if (deltaX > 0 && deltaY < 30) {
       setSwipeOffset(Math.min(deltaX, 70));
     }
   };
 
   const handleTouchEnd = () => {
-    if (swipeOffset > 40) {
+    clearTimeout(longPressTimerRef.current);
+    if (!isLongPressRef.current && swipeOffset > 40) {
       onReply(message);
     }
     setSwipeOffset(0);
@@ -87,6 +104,11 @@ export default function MessageBubble({ message, isOwn, onImageClick, onReply, o
 
   const handleDoubleClick = () => {
     onReply(message);
+  };
+
+  const handleContextMenu = (e) => {
+    e.preventDefault();
+    onDelete(message);
   };
 
   const handleOpenViewOnce = () => {
@@ -122,6 +144,7 @@ export default function MessageBubble({ message, isOwn, onImageClick, onReply, o
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onDoubleClick={handleDoubleClick}
+        onContextMenu={handleContextMenu}
       >
         {/* Author header */}
         {!isOwn && <div className="message-author">{message.username}</div>}
@@ -146,7 +169,7 @@ export default function MessageBubble({ message, isOwn, onImageClick, onReply, o
               </div>
             ) : (
               <button type="button" className="btn-view-once" onClick={handleOpenViewOnce}>
-                <i className="bi bi-1-circle-fill me-1" />
+                <i className="bi bi-1-circle-fill me-1 text-warning" />
                 <span>Photo (View Once)</span>
               </button>
             )
@@ -167,10 +190,11 @@ export default function MessageBubble({ message, isOwn, onImageClick, onReply, o
           {isEditedMsg && <span className="edited-tag me-1">(edited)</span>}
           <span>{formatTime(message.createdAt)}</span>
 
+          {/* Quick desktop edit icon */}
           {isOwn && !isDataURL(message.text) && onEdit && (
             <button
               type="button"
-              className="btn-bubble-edit ms-1"
+              className="btn-bubble-action ms-1"
               title="Edit message"
               onClick={(e) => {
                 e.stopPropagation();
@@ -178,6 +202,21 @@ export default function MessageBubble({ message, isOwn, onImageClick, onReply, o
               }}
             >
               <i className="bi bi-pencil-fill" />
+            </button>
+          )}
+
+          {/* Quick delete icon */}
+          {onDelete && (
+            <button
+              type="button"
+              className="btn-bubble-action btn-bubble-delete ms-1"
+              title="Delete message"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(message);
+              }}
+            >
+              <i className="bi bi-trash-fill" />
             </button>
           )}
 
