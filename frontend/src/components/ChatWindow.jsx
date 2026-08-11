@@ -5,6 +5,7 @@ import MessageBubble from './MessageBubble.jsx';
 import TypingIndicator from './TypingIndicator.jsx';
 import OnlineUsers from './OnlineUsers.jsx';
 import ConnectionBanner from './ConnectionBanner.jsx';
+import GifPicker from './GifPicker.jsx';
 
 const TYPING_STOP_DELAY = 1500;
 
@@ -56,12 +57,13 @@ export default function ChatWindow({ username, onLogout }) {
   const [sendError, setSendError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Feature states: Replying, Editing, View Once, Deleting, Clearing Chat
+  // Feature states: Replying, Editing, View Once, Deleting, Clearing Chat, GIF Picker
   const [replyingTo, setReplyingTo] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
   const [isViewOnce, setIsViewOnce] = useState(false);
   const [msgToDelete, setMsgToDelete] = useState(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showGifPicker, setShowGifPicker] = useState(false);
 
   const [imageDraft, setImageDraft] = useState('');
   const [imageName, setImageName] = useState('');
@@ -238,8 +240,22 @@ export default function ChatWindow({ username, onLogout }) {
       return;
     }
 
-    setSendError('Compressing image...');
     setImageName(file.name);
+
+    // If file is animated GIF, read as Data URL without canvas compression
+    if (file.type === 'image/gif') {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setSendError('');
+        setImageDraft(ev.target.result);
+        setImageSize(file.size);
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+      return;
+    }
+
+    setSendError('Compressing image...');
 
     compressImage(file, 1200, 1200, 0.7, (compressedDataUrl, sizeInBytes) => {
       const MAX_SIZE = 1.5 * 1024 * 1024;
@@ -265,13 +281,19 @@ export default function ChatWindow({ username, onLogout }) {
     setIsViewOnce(false);
   }
 
+  const handleSelectGif = (gifUrl) => {
+    setShowGifPicker(false);
+    sendDirectMedia(gifUrl, false);
+  };
+
   const handleStartReply = (msg) => {
     setEditingMessage(null);
     setReplyingTo({
       id: msg.id,
-      username: msg.username,
-      text: msg.text,
+      username: msg.username || 'User',
+      text: msg.text || '',
     });
+    inputRef.current?.focus();
   };
 
   const handleStartEdit = (msg) => {
@@ -294,7 +316,6 @@ export default function ChatWindow({ username, onLogout }) {
     const delId = msgToDelete.id;
     setMsgToDelete(null);
 
-    // Optimistic remove
     setMessages((prev) => prev.filter((m) => m.id !== delId));
 
     if (connected) {
@@ -323,13 +344,78 @@ export default function ChatWindow({ username, onLogout }) {
     }
   };
 
+  // Helper to send GIF or direct media immediately
+  const sendDirectMedia = (mediaUrl, viewOnce = false) => {
+    if (sendLockRef.current) return;
+    sendLockRef.current = true;
+
+    const currentReply = replyingTo;
+    setReplyingTo(null);
+
+    const tempId = 'temp-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    const payload = {
+      username,
+      text: mediaUrl,
+      replyToId: currentReply?.id || null,
+      replyToUsername: currentReply?.username || null,
+      replyToText: currentReply?.text || null,
+      isViewOnce: viewOnce ? 1 : 0,
+      tempId,
+    };
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: tempId,
+        username,
+        text: mediaUrl,
+        replyToId: payload.replyToId,
+        replyToUsername: payload.replyToUsername,
+        replyToText: payload.replyToText,
+        isViewOnce: payload.isViewOnce,
+        createdAt: new Date().toISOString(),
+        status: 'sending',
+      },
+    ]);
+
+    if (connected) {
+      socket.emit('message:send', payload, (ack) => {
+        if (ack?.success) {
+          const serverMsg = ack.message;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempId ? { ...serverMsg, status: serverMsg.status || 'sent' } : m
+            )
+          );
+        } else {
+          setSendError(ack?.error || 'Failed to send media.');
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        }
+        sendLockRef.current = false;
+      });
+    } else {
+      sendMessageRest(payload)
+        .then((message) => {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === tempId ? { ...message, status: message.status || 'sent' } : m))
+          );
+        })
+        .catch((err) => {
+          console.error(err);
+          setSendError('Failed to send media.');
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        })
+        .finally(() => {
+          sendLockRef.current = false;
+        });
+    }
+  };
+
   async function handleSend(e) {
     e.preventDefault();
 
-    // Focus input field immediately to keep mobile soft keyboard open!
     inputRef.current?.focus();
 
-    // Handling message edit mode
     if (editingMessage) {
       const newText = draft.trim();
       if (!newText) return;
@@ -384,9 +470,9 @@ export default function ChatWindow({ username, onLogout }) {
       payloads.push({
         username,
         text: image,
-        replyToId: currentReply?.id,
-        replyToUsername: currentReply?.username,
-        replyToText: currentReply?.text,
+        replyToId: currentReply?.id || null,
+        replyToUsername: currentReply?.username || null,
+        replyToText: currentReply?.text || null,
         isViewOnce: currentViewOnce ? 1 : 0,
       });
     }
@@ -394,9 +480,9 @@ export default function ChatWindow({ username, onLogout }) {
       payloads.push({
         username,
         text,
-        replyToId: currentReply?.id,
-        replyToUsername: currentReply?.username,
-        replyToText: currentReply?.text,
+        replyToId: currentReply?.id || null,
+        replyToUsername: currentReply?.username || null,
+        replyToText: currentReply?.text || null,
         isViewOnce: 0,
       });
     }
@@ -576,6 +662,14 @@ export default function ChatWindow({ username, onLogout }) {
         )}
 
         <form className="input-area" onSubmit={handleSend}>
+          {/* GIF Picker Popover */}
+          {showGifPicker && (
+            <GifPicker
+              onSelectGif={handleSelectGif}
+              onClose={() => setShowGifPicker(false)}
+            />
+          )}
+
           {replyingTo && (
             <div className="input-action-banner reply-mode">
               <div className="action-banner-info text-truncate">
@@ -626,7 +720,7 @@ export default function ChatWindow({ username, onLogout }) {
 
           <input
             type="file"
-            accept="image/*"
+            accept="image/*,.gif"
             ref={fileInputRef}
             style={{ display: 'none' }}
             onChange={handleFileChange}
@@ -642,11 +736,19 @@ export default function ChatWindow({ username, onLogout }) {
           />
 
           <div className="input-container">
-            <button type="button" className="btn btn-attach" onClick={handleFileClick} title="Upload Image">
+            <button type="button" className="btn btn-attach" onClick={handleFileClick} title="Upload Image or GIF">
               <i className="bi bi-image" />
             </button>
             <button type="button" className="btn btn-attach" onClick={handleCameraClick} title="Open Camera">
               <i className="bi bi-camera-fill" />
+            </button>
+            <button
+              type="button"
+              className={`btn btn-attach btn-gif-btn ${showGifPicker ? 'active' : ''}`}
+              onClick={() => setShowGifPicker(!showGifPicker)}
+              title="Search GIFs"
+            >
+              GIF
             </button>
             <input
               ref={inputRef}

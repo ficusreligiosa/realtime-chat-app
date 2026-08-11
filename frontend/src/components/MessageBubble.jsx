@@ -11,8 +11,15 @@ function formatTime(isoLike) {
   }
 }
 
-function isDataURL(str) {
-  return typeof str === 'string' && str.startsWith('data:image/');
+function isImageOrGif(str) {
+  if (typeof str !== 'string') return false;
+  if (str.startsWith('data:image/')) return true;
+  return Boolean(
+    str.match(/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i) ||
+    str.includes('media.giphy.com') ||
+    str.includes('tenor.com') ||
+    str.includes('giphy.gif')
+  );
 }
 
 function renderTextWithLinks(text) {
@@ -68,11 +75,10 @@ export default function MessageBubble({ message, isOwn, onImageClick, onReply, o
     setTouchStart({ x: touch.clientX, y: touch.clientY });
     isLongPressRef.current = false;
 
-    // Start 500ms long-press timer for deletion
     longPressTimerRef.current = setTimeout(() => {
       isLongPressRef.current = true;
       if (window.navigator?.vibrate) {
-        window.navigator.vibrate(50); // haptic feedback
+        window.navigator.vibrate(50);
       }
       onDelete(message);
     }, 500);
@@ -83,12 +89,10 @@ export default function MessageBubble({ message, isOwn, onImageClick, onReply, o
     const deltaX = touch.clientX - touchStart.x;
     const deltaY = Math.abs(touch.clientY - touchStart.y);
 
-    // Cancel long press if user moves finger
     if (Math.abs(deltaX) > 10 || deltaY > 10) {
       clearTimeout(longPressTimerRef.current);
     }
 
-    // Swipe right to reply
     if (deltaX > 0 && deltaY < 30) {
       setSwipeOffset(Math.min(deltaX, 70));
     }
@@ -127,9 +131,10 @@ export default function MessageBubble({ message, isOwn, onImageClick, onReply, o
     }
   };
 
-  const replyUser = message.replyToUsername || message.reply_to_username;
+  const replyUser = message.replyToUsername || message.reply_to_username || (message.replyToId || message.reply_to_id ? 'User' : null);
   const replyText = message.replyToText || message.reply_to_text;
   const replyId = message.replyToId || message.reply_to_id;
+  const hasReply = Boolean(replyId || replyUser || replyText);
   const isEditedMsg = Boolean(message.isEdited || message.is_edited);
 
   return (
@@ -150,17 +155,17 @@ export default function MessageBubble({ message, isOwn, onImageClick, onReply, o
         {!isOwn && <div className="message-author">{message.username}</div>}
 
         {/* Quoted message if this is a reply */}
-        {replyUser && (
+        {hasReply && (
           <div className="reply-quote" onClick={() => scrollToRepliedMessage(replyId)}>
-            <div className="reply-quote-author">@{replyUser}</div>
+            <div className="reply-quote-author">@{replyUser || 'User'}</div>
             <div className="reply-quote-text text-truncate">
-              {isDataURL(replyText) ? '📷 Photo' : replyText}
+              {isImageOrGif(replyText) ? '📷 Media / GIF' : replyText || 'Replied message'}
             </div>
           </div>
         )}
 
         {/* Content body */}
-        {isDataURL(message.text) ? (
+        {isImageOrGif(message.text) ? (
           isViewOnceMsg ? (
             viewOnceOpened ? (
               <div className="view-once-opened">
@@ -190,8 +195,7 @@ export default function MessageBubble({ message, isOwn, onImageClick, onReply, o
           {isEditedMsg && <span className="edited-tag me-1">(edited)</span>}
           <span>{formatTime(message.createdAt)}</span>
 
-          {/* Quick desktop edit icon */}
-          {isOwn && !isDataURL(message.text) && onEdit && (
+          {isOwn && !isImageOrGif(message.text) && onEdit && (
             <button
               type="button"
               className="btn-bubble-action ms-1"
@@ -205,7 +209,6 @@ export default function MessageBubble({ message, isOwn, onImageClick, onReply, o
             </button>
           )}
 
-          {/* Quick delete icon */}
           {onDelete && (
             <button
               type="button"
