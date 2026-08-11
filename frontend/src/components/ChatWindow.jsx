@@ -113,21 +113,10 @@ export default function ChatWindow({ username, onLogout }) {
       );
     }
     function handleNewMessage(message) {
+      // This only fires for OTHER users' messages (server uses socket.broadcast.emit)
+      // The sender's own message is handled via the ack callback in handleSend
       setMessages((prev) => {
-        // 1. Replace optimistic message if tempId matches
-        if (message.tempId) {
-          const hasOptimistic = prev.some((m) => m.id === message.tempId);
-          if (hasOptimistic) {
-            return prev.map((m) =>
-              m.id === message.tempId
-                ? { ...message, id: message.id, status: message.status || 'delivered' }
-                : m
-            );
-          }
-        }
-        // 2. Skip if we already have this server message id (dedup)
-        if (prev.some((m) => m.id === message.id)) return prev;
-        // 3. New message from another user or from REST fallback
+        if (prev.some((m) => m.id === message.id)) return prev; // dedup safety
         return [...prev, { ...message, status: message.status || 'delivered' }];
       });
     }
@@ -288,7 +277,17 @@ export default function ChatWindow({ username, onLogout }) {
 
       if (connected) {
         socket.emit('message:send', { ...payload, tempId }, (ack) => {
-          if (!ack?.success) {
+          if (ack?.success) {
+            // Server confirmed — replace optimistic message with the real one + correct status
+            const serverMsg = ack.message;
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempId
+                  ? { ...serverMsg, status: serverMsg.status || 'sent' }
+                  : m
+              )
+            );
+          } else {
             setSendError(ack?.error || 'Failed to send message.');
             setMessages((prev) => prev.filter((m) => m.id !== tempId));
           }
@@ -298,7 +297,7 @@ export default function ChatWindow({ username, onLogout }) {
         try {
           const message = await sendMessageRest(payload);
           setMessages((prev) =>
-            prev.map((m) => (m.id === tempId ? { ...message, status: 'delivered' } : m))
+            prev.map((m) => (m.id === tempId ? { ...message, status: message.status || 'sent' } : m))
           );
         } catch (err) {
           console.error(err);

@@ -2,60 +2,78 @@ const { createMessage, getAllUsernames } = require('../db/messageStore');
 
 /**
  * Tracks which usernames are currently online.
- * Map<username, Set<socketId>> — a user can have multiple tabs/devices open,
+ * Map<username (lowercased), Set<socketId>> — a user can have multiple tabs/devices open,
  * so we only mark them offline once every socket for that username disconnects.
+ * We also store the original-case display name.
  */
-const onlineUsers = new Map();
+const onlineUsers = new Map(); // key: lowercase username, value: { displayName, sockets: Set<socketId> }
 
 function addOnlineUser(username, socketId) {
-  if (!onlineUsers.has(username)) onlineUsers.set(username, new Set());
-  onlineUsers.get(username).add(socketId);
+  const key = username.toLowerCase();
+  if (!onlineUsers.has(key)) {
+    onlineUsers.set(key, { displayName: username, sockets: new Set() });
+  }
+  onlineUsers.get(key).sockets.add(socketId);
 }
 
 function removeOnlineUser(username, socketId) {
-  const sockets = onlineUsers.get(username);
-  if (!sockets) return;
-  sockets.delete(socketId);
-  if (sockets.size === 0) onlineUsers.delete(username);
+  const key = username.toLowerCase();
+  const entry = onlineUsers.get(key);
+  if (!entry) return;
+  entry.sockets.delete(socketId);
+  if (entry.sockets.size === 0) onlineUsers.delete(key);
 }
 
 function getOnlineUsernames() {
-  return Array.from(onlineUsers.keys());
+  return Array.from(onlineUsers.values()).map(e => e.displayName);
 }
 
 function getUsersPresenceList() {
   const dbUsers = getAllUsernames();
-  const activeUsers = getOnlineUsernames();
-  const allUsers = new Set([...dbUsers, ...activeUsers]);
-  
-  return Array.from(allUsers).map(username => ({
-    username,
-    isOnline: activeUsers.includes(username)
-  }));
+  const activeKeys = new Set(Array.from(onlineUsers.keys()));
+  const seen = new Set();
+  const result = [];
+
+  // Add all online users first
+  for (const [key, entry] of onlineUsers) {
+    seen.add(key);
+    result.push({ username: entry.displayName, isOnline: true });
+  }
+
+  // Add offline users from DB history
+  for (const dbUser of dbUsers) {
+    const k = dbUser.toLowerCase();
+    if (!seen.has(k)) {
+      seen.add(k);
+      result.push({ username: dbUser, isOnline: false });
+    }
+  }
+
+  return result;
 }
 
 /**
- * Determine message status based on whether other users are online.
- * 'sent'      = saved to DB, no other users connected to receive it
- * 'delivered'  = saved to DB AND at least one other user is connected
+ * Count how many OTHER users (not the sender) are currently online.
  */
-function determineStatus(senderUsername) {
-  const others = getOnlineUsernames().filter(u => u !== senderUsername);
-  return others.length > 0 ? 'delivered' : 'sent';
+function countOtherOnlineUsers(senderUsername) {
+  const senderKey = senderUsername.toLowerCase();
+  let count = 0;
+  for (const [key] of onlineUsers) {
+    if (key !== senderKey) count++;
+  }
+  return count;
 }
 
 function registerChatSocket(io) {
   io.on('connection', (socket) => {
     console.log(`[socket] connected: ${socket.id}`);
 
-    // Client identifies itself right after connecting
     socket.on('user:join', (username) => {
       try {
         if (!username || typeof username !== 'string') return;
         socket.data.username = username.trim();
         addOnlineUser(socket.data.username, socket.id);
 
-        // Let everyone know the updated presence list (online + offline users)
         io.emit('users:presence', getUsersPresenceList());
         console.log(`[socket] ${socket.data.username} joined (${socket.id})`);
       } catch (err) {
@@ -64,7 +82,6 @@ function registerChatSocket(io) {
       }
     });
 
-    // Incoming chat message
     socket.on('message:send', (payload, ack) => {
       try {
         const username = (payload && payload.username) || socket.data.username;
@@ -79,15 +96,18 @@ function registerChatSocket(io) {
         }
 
         const message = createMessage({ username: username.trim(), text: text.trim() });
-        const status = determineStatus(username.trim());
+        const othersOnline = countOtherOnlineUsers(username.trim());
+        const status = othersOnline > 0 ? 'delivered' : 'sent';
 
-        // Broadcast to everyone, including sender, with computed status and tempId
-        io.emit('message:new', { ...message, status, tempId });
+        // Broadcast to everyone EXCEPT the sender — sender updates via ack callback
+        socket.broadcast.emit('message:new', { ...message, status: 'delivered' });
 
-        // If this is a new username sending a message, update the presence lists
+        // Ack to sender with the correct status for their own message
+        if (typeof ack === 'function') {
+          ack({ success: true, message: { ...message, status, tempId } });
+        }
+
         io.emit('users:presence', getUsersPresenceList());
-
-        if (typeof ack === 'function') ack({ success: true, message: { ...message, status } });
       } catch (err) {
         console.error('[socket] message:send error:', err);
         if (typeof ack === 'function') ack({ success: false, error: 'Failed to send message' });
@@ -95,7 +115,6 @@ function registerChatSocket(io) {
       }
     });
 
-    // Typing indicator
     socket.on('typing:start', (username) => {
       socket.broadcast.emit('typing:update', { username: username || socket.data.username, isTyping: true });
     });
@@ -119,4 +138,4 @@ function registerChatSocket(io) {
   });
 }
 
-module.exports = { registerChatSocket, getOnlineUsernames };
+module.exports = { registerChatSocket, getOnlineUsernames, countOtherOnlineUsers };
