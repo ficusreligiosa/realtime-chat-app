@@ -1068,11 +1068,20 @@ input, select, textarea {
   color: var(--text-main) !important;
   font-size: 16px !important;
   padding: 8px 4px;
+  min-height: 24px;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
-.pill-text-input::placeholder {
+.pill-text-input:empty::before {
+  content: attr(data-placeholder);
   color: rgba(255, 255, 255, 0.4);
   font-size: 1.05rem;
+  pointer-events: none;
 }
 
 /* Paperclip Clip Button */

@@ -212,10 +212,43 @@ export default function ChatWindow({ username, onLogout }) {
     }
   }, [username]);
 
-  function handleDraftChange(e) {
-    setDraft(e.target.value);
+  // ContentEditable input handler — detects Gboard GIF insertions
+  function handleContentEditableInput() {
+    const div = inputRef.current;
+    if (!div) return;
 
-    if (!isTypingRef.current) {
+    // Check for inserted images (GIFs from Gboard / keyboard)
+    const images = div.querySelectorAll('img');
+    if (images.length > 0) {
+      for (const img of images) {
+        const src = img.src;
+        img.remove();
+        if (src) {
+          if (src.startsWith('blob:')) {
+            // Gboard inserts blob URLs — convert to data URL
+            fetch(src)
+              .then((r) => r.blob())
+              .then((blob) => {
+                const reader = new FileReader();
+                reader.onload = (ev) => sendDirectMedia(ev.target.result, false);
+                reader.readAsDataURL(blob);
+              })
+              .catch((err) => console.error('Failed to process GIF:', err));
+          } else {
+            sendDirectMedia(src, false);
+          }
+        }
+      }
+      // Strip any leftover HTML
+      div.textContent = div.textContent;
+      return;
+    }
+
+    // Normal text input
+    const text = div.textContent || '';
+    setDraft(text);
+
+    if (!isTypingRef.current && text.length > 0) {
       isTypingRef.current = true;
       socket.emit('typing:start', username);
     }
@@ -223,30 +256,27 @@ export default function ChatWindow({ username, onLogout }) {
     typingTimeoutRef.current = setTimeout(stopTyping, TYPING_STOP_DELAY);
   }
 
-  // Support Gboard and system keyboard GIF / image pasting
+  // Handle paste — images from clipboard & prevent rich HTML
   function handlePaste(e) {
     const items = e.clipboardData?.items;
-    if (!items) return;
-
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.type.startsWith('image/')) {
-        e.preventDefault();
-        const file = item.getAsFile();
-        if (!file) continue;
-
-        const isGif = file.type === 'image/gif';
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          setSendError('');
-          setImageName(file.name || (isGif ? 'keyboard_gif.gif' : 'keyboard_image.png'));
-          setImageDraft(ev.target.result);
-          setImageSize(file.size);
-        };
-        reader.readAsDataURL(file);
-        break;
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (!file) continue;
+          const reader = new FileReader();
+          reader.onload = (ev) => sendDirectMedia(ev.target.result, false);
+          reader.readAsDataURL(file);
+          return;
+        }
       }
     }
+    // Plain text paste only — strip any HTML
+    e.preventDefault();
+    const text = e.clipboardData?.getData('text/plain') || '';
+    document.execCommand('insertText', false, text);
   }
 
   function handleFileClick() {
@@ -328,12 +358,14 @@ export default function ChatWindow({ username, onLogout }) {
       text: msg.text,
     });
     setDraft(msg.text);
+    if (inputRef.current) inputRef.current.textContent = msg.text;
     inputRef.current?.focus();
   };
 
   const handleCancelEdit = () => {
     setEditingMessage(null);
     setDraft('');
+    if (inputRef.current) inputRef.current.textContent = '';
   };
 
   const handleConfirmDeleteMessage = async () => {
@@ -447,6 +479,7 @@ export default function ChatWindow({ username, onLogout }) {
       const editId = editingMessage.id;
       setEditingMessage(null);
       setDraft('');
+      if (inputRef.current) inputRef.current.textContent = '';
 
       setMessages((prev) =>
         prev.map((m) => (m.id === editId ? { ...m, text: newText, isEdited: 1 } : m))
@@ -480,6 +513,7 @@ export default function ChatWindow({ username, onLogout }) {
     const currentViewOnce = isViewOnce;
 
     setDraft('');
+    if (inputRef.current) inputRef.current.textContent = '';
     setImageDraft('');
     setImageName('');
     setImageSize(0);
@@ -759,7 +793,7 @@ export default function ChatWindow({ username, onLogout }) {
             onChange={handleFileChange}
           />
 
-          {/* Pill Input Bar Layout matching user screenshot */}
+          {/* Pill Input Bar Layout — contentEditable for Gboard GIF support */}
           <div className="input-pill-bar">
             <button
               type="button"
@@ -770,16 +804,21 @@ export default function ChatWindow({ username, onLogout }) {
               GIF
             </button>
 
-            <input
+            <div
               ref={inputRef}
-              type="text"
+              contentEditable
+              role="textbox"
               className="pill-text-input"
-              placeholder={editingMessage ? 'Edit your message...' : 'Message'}
-              value={draft}
-              onChange={handleDraftChange}
+              data-placeholder={editingMessage ? 'Edit your message...' : 'Message'}
+              onInput={handleContentEditableInput}
               onPaste={handlePaste}
               onBlur={stopTyping}
-              maxLength={2000}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend(e);
+                }
+              }}
             />
 
             <button
@@ -792,14 +831,13 @@ export default function ChatWindow({ username, onLogout }) {
             </button>
 
             <button
-              type="submit"
+              type="button"
               className="btn-pill-send-circle"
-              disabled={!draft.trim() && !imageDraft}
               onMouseDown={(e) => e.preventDefault()}
-              title={draft.trim() || imageDraft ? 'Send' : 'Open Camera'}
               onClick={(e) => {
-                if (!draft.trim() && !imageDraft) {
-                  e.preventDefault();
+                if (draft.trim() || imageDraft) {
+                  handleSend(e);
+                } else {
                   handleCameraClick();
                 }
               }}
