@@ -1009,6 +1009,121 @@ input, select, textarea {
   object-fit: cover;
 }
 
+/* ---- Telegram/iOS Pill Input Bar Layout (User Screenshot) ---- */
+.input-area {
+  padding: 10px 12px;
+  background: var(--sidebar-bg);
+  border-top: 1px solid var(--border-color);
+  backdrop-filter: blur(12px);
+  position: relative;
+}
+
+.input-pill-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(13, 20, 36, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  padding: 4px 6px 4px 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input-pill-bar:focus-within {
+  border-color: rgba(139, 92, 246, 0.5);
+  box-shadow: 0 0 15px rgba(139, 92, 246, 0.2);
+}
+
+/* GIF Pill Badge Icon */
+.btn-pill-gif {
+  background: transparent;
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  color: var(--text-main);
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  line-height: 1.2;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.btn-pill-gif:hover, .btn-pill-gif.active {
+  border-color: var(--accent-purple);
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.2);
+}
+
+/* Pill Text Input */
+.pill-text-input {
+  flex-grow: 1;
+  min-width: 0;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  color: var(--text-main) !important;
+  font-size: 16px !important;
+  padding: 8px 4px;
+}
+
+.pill-text-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 1.05rem;
+}
+
+/* Paperclip Clip Button */
+.btn-pill-clip {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 1.35rem;
+  padding: 4px 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+}
+
+.btn-pill-clip:hover {
+  color: #ffffff;
+}
+
+/* Bright Blue Circle Send / Action Button */
+.btn-pill-send-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #0084ff !important;
+  border: none !important;
+  color: #ffffff !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 132, 255, 0.4);
+  transition: transform 0.2s ease, background-color 0.2s ease, filter 0.2s ease;
+}
+
+.btn-pill-send-circle:hover:not(:disabled) {
+  background: #0073e6 !important;
+  transform: scale(1.06);
+  box-shadow: 0 6px 16px rgba(0, 132, 255, 0.6);
+}
+
+.btn-pill-send-circle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+
 
 
 

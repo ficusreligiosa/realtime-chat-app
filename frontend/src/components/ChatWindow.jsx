@@ -223,6 +223,32 @@ export default function ChatWindow({ username, onLogout }) {
     typingTimeoutRef.current = setTimeout(stopTyping, TYPING_STOP_DELAY);
   }
 
+  // Support Gboard and system keyboard GIF / image pasting
+  function handlePaste(e) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        const isGif = file.type === 'image/gif';
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          setSendError('');
+          setImageName(file.name || (isGif ? 'keyboard_gif.gif' : 'keyboard_image.png'));
+          setImageDraft(ev.target.result);
+          setImageSize(file.size);
+        };
+        reader.readAsDataURL(file);
+        break;
+      }
+    }
+  }
+
   function handleFileClick() {
     fileInputRef.current?.click();
   }
@@ -242,7 +268,6 @@ export default function ChatWindow({ username, onLogout }) {
 
     setImageName(file.name);
 
-    // If file is animated GIF, read as Data URL without canvas compression
     if (file.type === 'image/gif') {
       const reader = new FileReader();
       reader.onload = (ev) => {
@@ -344,7 +369,6 @@ export default function ChatWindow({ username, onLogout }) {
     }
   };
 
-  // Helper to send GIF or direct media immediately
   const sendDirectMedia = (mediaUrl, viewOnce = false) => {
     if (sendLockRef.current) return;
     sendLockRef.current = true;
@@ -735,38 +759,58 @@ export default function ChatWindow({ username, onLogout }) {
             onChange={handleFileChange}
           />
 
-          <div className="input-container">
-            <button type="button" className="btn btn-attach" onClick={handleFileClick} title="Upload Image or GIF">
-              <i className="bi bi-image" />
-            </button>
-            <button type="button" className="btn btn-attach" onClick={handleCameraClick} title="Open Camera">
-              <i className="bi bi-camera-fill" />
-            </button>
+          {/* Pill Input Bar Layout matching user screenshot */}
+          <div className="input-pill-bar">
             <button
               type="button"
-              className={`btn btn-attach btn-gif-btn ${showGifPicker ? 'active' : ''}`}
+              className={`btn-pill-gif ${showGifPicker ? 'active' : ''}`}
               onClick={() => setShowGifPicker(!showGifPicker)}
               title="Search GIFs"
             >
               GIF
             </button>
+
             <input
               ref={inputRef}
               type="text"
-              className="form-control custom-input"
-              placeholder={editingMessage ? 'Edit your message...' : 'Type a message...'}
+              className="pill-text-input"
+              placeholder={editingMessage ? 'Edit your message...' : 'Message'}
               value={draft}
               onChange={handleDraftChange}
+              onPaste={handlePaste}
               onBlur={stopTyping}
               maxLength={2000}
             />
+
+            <button
+              type="button"
+              className="btn-pill-clip"
+              onClick={handleFileClick}
+              title="Attach Photo or GIF"
+            >
+              <i className="bi bi-paperclip" />
+            </button>
+
             <button
               type="submit"
-              className="btn btn-send"
+              className="btn-pill-send-circle"
               disabled={!draft.trim() && !imageDraft}
               onMouseDown={(e) => e.preventDefault()}
+              title={draft.trim() || imageDraft ? 'Send' : 'Open Camera'}
+              onClick={(e) => {
+                if (!draft.trim() && !imageDraft) {
+                  e.preventDefault();
+                  handleCameraClick();
+                }
+              }}
             >
-              <i className={editingMessage ? 'bi bi-check-lg' : 'bi bi-send-fill'} />
+              {editingMessage ? (
+                <i className="bi bi-check-lg" />
+              ) : draft.trim() || imageDraft ? (
+                <i className="bi bi-send-fill" />
+              ) : (
+                <i className="bi bi-camera-fill" />
+              )}
             </button>
           </div>
         </form>
